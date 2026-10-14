@@ -4,6 +4,7 @@ Output paths are Git-ignored. Do not publish the resulting private JAR.
 """
 import pathlib, json, struct, gzip, shutil, hashlib, sys
 import numpy as np
+from PIL import Image
 from kv3 import loads
 
 LAB=pathlib.Path('D:/DeadlockHazeLab')
@@ -18,14 +19,37 @@ hero=heroes['hero_haze']
 names=set(hero['m_mapBoundAbilities'].values())
 names.update(('citadel_ability_zipline_boost','citadel_ability_melee_parry'))
 native=json.loads((LAB/'evidence/native-float-defaults.json').read_text())
+extra=LAB/'evidence/movement-crosshair-defaults.json'
+if extra.exists():native.update(json.loads(extra.read_text()))
 model_data=(LAB/'evidence/model-data.txt').read_text(encoding='utf8')
 start=model_data.index('<!-- kv3')
 model_kv=loads(model_data[start:])
 model_keys=loads(model_kv['m_modelInfo']['m_keyValueText'])
+attachments={}
+blocks=LAB/'evidence/haze-model-blocks.txt'
+if blocks.exists():
+    mesh_text=blocks.read_text().split('--- Data for block "MDAT" ---',1)[1].split('--- Data for block ',1)[0]
+    mesh_data=loads(mesh_text[mesh_text.index('<!-- kv3'):])
+    attachments={a['key']:a['value']for a in mesh_data['m_attachments']}
+settings={}
+native_abilities={}
+native_ability_file=LAB/'evidence/native-ability-defaults.json'
+if native_ability_file.exists():native_abilities=json.loads(native_ability_file.read_text())
+for ability,fields in native_abilities.items():
+    for key,evidence in fields.items():abilities[ability].setdefault(key,evidence['value'])
+settings_path=pathlib.Path('C:/Program Files (x86)/Steam/userdata/1035274860/1422450/local/cfg/user_convars_0_slot0.vcfg')
+if settings_path.exists():
+    import re
+    allowed={'sensitivity','sensitivity_y_scale','zoom_sensitivity_ratio','m_pitch','m_yaw','citadel_camera_hero_fov'}
+    for key,value in re.findall(r'"([^"\n]+)"\s*"([^"\n]+)"',settings_path.read_text()):
+        if key in allowed or key.startswith('citadel_crosshair_'):
+            try:settings[key]=float(value)
+            except ValueError:pass
 profile=dict(build='25917577',clientVersion=6779,revision=11123977,date='2026-10-13',
              hero=hero,abilities={k:abilities[k] for k in sorted(names) if k in abilities},
-             nativeFloatDefaults=native,modelData=model_kv,modelKeys=model_keys)
+             nativeFloatDefaults=native,modelData=model_kv,modelKeys=model_keys,localInputSettings=settings,attachments=attachments,nativeAbilityDefaults=native_abilities)
 (DATA/'profile.json').write_text(json.dumps(profile,separators=(',',':')),encoding='utf8')
+if '--profile-only' in sys.argv:print('Updated pinned retail profile');sys.exit(0)
 
 g=json.loads((LAB/'model/haze.gltf').read_text())
 blob=(LAB/'model'/g['buffers'][0]['uri']).read_bytes()
@@ -79,7 +103,11 @@ for mi,m in enumerate(g['meshes']):
         assert np.max(np.abs(weight.sum(axis=1)-1))<0.015
         ints(len(pos),len(index)); floats(pos); floats(norm); floats(uv)
         out.write(joint.astype('>i4').tobytes()); floats(weight); out.write(index.astype('>i4').tobytes())
-        shutil.copyfile(LAB/'model'/tex,ASSETS/tex)
+        # Source PBR opaque albedo alpha is a packed material channel, not opacity.
+        # glTF export retains it; Minecraft entity shaders multiply alpha by it.
+        image=Image.open(LAB/'model'/tex).convert('RGBA')
+        if material.get('alphaMode','OPAQUE')=='OPAQUE': image.putalpha(255)
+        image.save(ASSETS/tex)
 
 ints(len(g['animations']))
 summary=[]

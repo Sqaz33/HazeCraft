@@ -14,7 +14,14 @@ loom {
     }
     runs {
         client {
-            if (project.hasProperty('lab')) vmArg '-Dhaze.lab=true'
+            if (project.hasProperty('lab')) {
+                vmArg '-Dhaze.lab=true'
+                vmArg '-Dfabric.client.gametest=true'
+                vmArg '-Dfabric.client.gametest.modid=haze'
+                vmArg '-Xmx3G'
+                programArg '--width=1280'
+                programArg '--height=720'
+            }
         }
     }
 }

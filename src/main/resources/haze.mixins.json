@@ -1,0 +1,1 @@
+{"required":true,"package":"dev.local.haze.mixin","compatibilityLevel":"JAVA_21","mixins":["PlayerMixin","AvatarMixin","MobMixin"],"injectors":{"defaultRequire":1}}

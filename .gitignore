@@ -6,5 +6,7 @@ run/
 local.properties
 src/main/resources/assets/haze/retail/
 src/main/resources/haze/retail/
+src/main/resources/assets/haze/font/retail/
+src/main/resources/assets/haze/sounds/retail/
 private/
 tools/__pycache__/

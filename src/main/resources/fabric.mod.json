@@ -5,6 +5,7 @@
   "name": "Deadlock Haze — private local port",
   "description": "Local Haze mechanics and retail asset conversion for the owner's private Minecraft instance.",
   "environment": "*",
-  "entrypoints": {},
+  "entrypoints": {"main":["dev.local.haze.HazeMod"],"client":["dev.local.haze.client.HazeClient"],"fabric-client-gametest":["dev.local.haze.client.HazeGameTest"]},
+  "mixins":["haze.mixins.json",{"config":"haze.client.mixins.json","environment":"client"}],
   "depends": {"fabricloader": ">=0.19.5", "minecraft": "~1.21.11", "java": ">=21", "fabric-api": "*"}
 }
