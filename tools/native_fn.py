@@ -1,10 +1,10 @@
 """Dump precise PE exception function ranges for offline review; no process access."""
-import argparse,json,struct,math
+import argparse,json,struct,math,hashlib
 from pathlib import Path
 import pefile,capstone
-p=argparse.ArgumentParser();p.add_argument('address',nargs='+');p.add_argument('--out',required=True);a=p.parse_args()
-pe=pefile.PE('D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll',fast_load=True)
-pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXCEPTION']]);base=pe.OPTIONAL_HEADER.ImageBase
+p=argparse.ArgumentParser();p.add_argument('address',nargs='+');p.add_argument('--out',required=True);p.add_argument('--dll',default='D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll');a=p.parse_args()
+pe=pefile.PE(a.dll,fast_load=True)
+pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXCEPTION']]);base=pe.OPTIONAL_HEADER.ImageBase;source_hash=hashlib.sha256(Path(a.dll).read_bytes()).hexdigest()
 def primary(entry):
  while getattr(entry.unwindinfo,'UNW_FLAG_CHAININFO',False):entry=entry.unwindinfo._chained_entry
  return entry.struct.BeginAddress
@@ -31,7 +31,7 @@ for address in a.address:
    for ins in md.disasm(pe.get_data(block-base,base+fn.EndAddress-block),block):
     if ins.address in decoded:break
     decoded[ins.address]=ins
-    if ins.mnemonic.startswith('j')and ins.operands and ins.operands[0].type==capstone.x86.X86_OP_IMM:
+    if ins.mnemonic.startswith('j')and ins.mnemonic!='jmp'and ins.operands and ins.operands[0].type==capstone.x86.X86_OP_IMM:
      target=ins.operands[0].imm
      if va<=target<base+fn.EndAddress:pending.append(target)
     if ins.mnemonic in ['ret','jmp','int3']:break
@@ -55,5 +55,5 @@ for address in a.address:
     if len(st)>=4 and all(32<=x<127 for x in st):row['string']=st.decode()
   rows.append(row)
  ranges=[{'start':hex(base+f.BeginAddress),'end':hex(base+f.EndAddress)}for f in fragments]if not leaf else [{'start':hex(base+fn.BeginAddress),'end':hex(base+fn.EndAddress)}]
- result.append({'start':hex(base+fn.BeginAddress),'end':hex(base+fn.EndAddress),'ranges':ranges,'leafControlFlowFallback':leaf,'instructions':rows})
+ result.append({'sourceFile':a.dll,'sourceSha256':source_hash,'start':hex(base+fn.BeginAddress),'end':hex(base+fn.EndAddress),'ranges':ranges,'leafControlFlowFallback':leaf,'instructions':rows})
 Path(a.out).write_text(json.dumps(result,indent=2));print([(f['start'],len(f['instructions']))for f in result])

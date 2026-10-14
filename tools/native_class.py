@@ -2,8 +2,8 @@
 import argparse,struct,json,re,math
 from pathlib import Path
 import pefile,capstone
-p=argparse.ArgumentParser();p.add_argument('name');p.add_argument('out');a=p.parse_args()
-path=Path('D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll')
+p=argparse.ArgumentParser();p.add_argument('name');p.add_argument('out');p.add_argument('--table-only',action='store_true');p.add_argument('--dll',default='D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll');a=p.parse_args()
+path=Path(a.dll)
 pe=pefile.PE(str(path),fast_load=True);base=pe.OPTIONAL_HEADER.ImageBase;data=path.read_bytes()
 name=('\x2e?AV'+a.name+'@@\0').encode();offset=data.find(name)
 if offset<0:
@@ -32,7 +32,7 @@ for col in cols:
     addr=struct.unpack_from('<Q',raw,pos)[0]
     if not any(lo<=addr<hi for lo,hi in textRanges):break
     rows=[]
-    for ins in md.disasm(pe.get_data(addr-base,2048),addr):
+    for ins in ([] if a.table_only else md.disasm(pe.get_data(addr-base,2048),addr)):
      row={'address':hex(ins.address),'mnemonic':ins.mnemonic,'operands':ins.op_str}
      for op in ins.operands:
       if op.type==capstone.x86.X86_OP_MEM and op.mem.base==capstone.x86.X86_REG_RIP:

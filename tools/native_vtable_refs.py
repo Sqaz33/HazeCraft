@@ -2,8 +2,8 @@
 import argparse,re,struct,json
 from pathlib import Path
 import pefile
-p=argparse.ArgumentParser();p.add_argument('vtable');p.add_argument('out');a=p.parse_args()
-pe=pefile.PE('D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll',fast_load=True);base=pe.OPTIONAL_HEADER.ImageBase;target=int(a.vtable,16);refs=[]
+p=argparse.ArgumentParser();p.add_argument('vtable');p.add_argument('out');p.add_argument('--dll',default='D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll');a=p.parse_args()
+pe=pefile.PE(a.dll,fast_load=True);base=pe.OPTIONAL_HEADER.ImageBase;target=int(a.vtable,16);refs=[]
 for s in pe.sections:
  if not s.Characteristics&0x20000000:continue
  raw=s.get_data();start=base+s.VirtualAddress

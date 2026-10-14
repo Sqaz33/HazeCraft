@@ -107,3 +107,14 @@ Latest explicit scope correction: no rope and no zipline in Minecraft. Removed b
 - `no-rope-build.log`: build passes after removal; **32 headless tests pass**. This check does not establish complete native movement parity.
 
 Continue movement/model priority: down-dash, corner behavior, proper crouch hull, movement transition graph and remaining native air/slide behavior. Then resume remaining HUD/abilities/camera work. No rope/zipline work remains in scope.
+
+
+## Update 2026-10-15 — full movement investigation before reimplementation
+
+User narrows work to movement, excluding rope, zipline, fans and trampolines. User explicitly excludes the old local replays: use current game code/data and the mod source. New regression reports: stamina quantity feedback, double jump, lateral wall jumps, slide after dash-jump. Investigate the whole system, not only those failures. The replacement must be reusable across characters, with Haze as the first profile.
+
+Installed Deadlock updated to build25939744 / client6782 / revision11127865. Frozen client is external `reference/25939744/client.dll`, SHA256 b7deb2d934614b2b9a4e3edf6cf7bfb954b9f1436aadb0bf07b24f07bb7d5515. Current VPK hero/movement definitions compare equal to previous extraction. Detailed confirmed facts and open research items are in MOVEMENT_RESEARCH.md.
+
+Current native catalogue includes 145 complete movement-related functions, selected from five ability classes and common movement services, with unwind-chain grouping. First targeted Ghidra pass exposed a decoder bug: leaf tail jumps followed neighboring functions and caused overlapping bodies. Corrected leaf traversal to follow conditional branches only; regenerated targets. Second pass succeeds. A helper-boundary expansion is running to prevent decompiler tail-call inlining from obscuring control flow. Decompiled output remains outside Git.
+
+No new physics implementation or new JAR has been delivered at this stage. The 2026-10-14 JAR remains an incomplete baseline. No old replay analysis is used as a movement specification. External DemoFile tool clone was exploratory tooling only and is not part of the mod or reference evidence.

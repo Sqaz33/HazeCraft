@@ -1,8 +1,8 @@
 """Extract float convar constructor defaults from the owned DLL static initializers."""
 import pathlib, json, struct, pefile, capstone, argparse
 lab=pathlib.Path('D:/DeadlockHazeLab')
-parser=argparse.ArgumentParser();parser.add_argument('--refs',default=str(lab/'evidence/client-cvar-refs.json'));parser.add_argument('--out',default=str(lab/'evidence/native-float-defaults.json'));args=parser.parse_args()
-dll=pathlib.Path('D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll')
+parser=argparse.ArgumentParser();parser.add_argument('--refs',default=str(lab/'evidence/client-cvar-refs.json'));parser.add_argument('--out',default=str(lab/'evidence/native-float-defaults.json'));parser.add_argument('--dll',default='D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll');args=parser.parse_args()
+dll=pathlib.Path(args.dll)
 data=dll.read_bytes(); pe=pefile.PE(data=data); base=pe.OPTIONAL_HEADER.ImageBase
 md=capstone.Cs(capstone.CS_ARCH_X86,capstone.CS_MODE_64); md.detail=True
 refs=json.loads(pathlib.Path(args.refs).read_text())['refs']; result={}

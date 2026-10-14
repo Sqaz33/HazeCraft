@@ -12,6 +12,12 @@ import java.util.*;
 public class HazeDecompileTargets extends GhidraScript {
     @Override public void run() throws Exception {
         String[] arguments=getScriptArgs();Path output=Path.of(arguments[1]);Files.createDirectories(output);
+        // Replace only this script's provisional Movement_* definitions before a refreshed import.
+        List<Address> previous=new ArrayList<>();
+        for(Function f:currentProgram.getFunctionManager().getFunctions(true))
+            if(f.getName().startsWith("Movement_"))previous.add(f.getEntryPoint());
+        if(arguments.length>2 && arguments[2].equals("replace"))
+            for(Address address:previous)currentProgram.getFunctionManager().removeFunction(address);
         List<Function> functions=new ArrayList<>();
         for(String line:Files.readAllLines(Path.of(arguments[0]))){
             if(line.isBlank()||line.startsWith("#"))continue;
@@ -32,7 +38,7 @@ public class HazeDecompileTargets extends GhidraScript {
                     function.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,true,SourceType.USER_DEFINED,parameters);
                 }
             }
-            functions.add(function);
+            if(parts.length<3 || !parts[2].equals("bind"))functions.add(function);
         }
         DecompInterface decompiler=new DecompInterface();decompiler.openProgram(currentProgram);
         try{
