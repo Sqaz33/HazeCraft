@@ -39,7 +39,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
                 if(state.active!=active) {
                     active=state.active;
                     if(active) {
-                        motion=new Motion(Retail.DATA);previousCamera=mc.options.getCameraType();mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+                        motion=new Motion(Retail.DATA);HazeView.reset();previousCamera=mc.options.getCameraType();mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
                     } else {
                         if(previousCamera!=null)mc.options.setCameraType(previousCamera);motion=null;
                         if(mc.screen instanceof UpgradeScreen)mc.setScreen(null);
@@ -57,6 +57,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("haze","hud"),(g,dt)->HazeHud.render(g));
         WorldRenderEvents.END_EXTRACTION.register(HazeRenderer::extract);
         WorldRenderEvents.AFTER_ENTITIES.register(HazeRenderer::draw);
+        WorldRenderEvents.AFTER_ENTITIES.register(HazeEffects::draw);
         HazeMod.LOG.info("Haze client ready: F6 toggle, retail default controls, hold Alt for upgrades");
     }
     private static boolean key(long handle,int key) { return GLFW.glfwGetKey(handle,key)==GLFW.GLFW_PRESS; }
@@ -104,7 +105,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         double cap=state!=null&&state.flurry?Retail.DATA.prop("ability_bullet_flurry","ChannelMoveSpeed",state.ranks[3]):-1;
         Motion.Collision collision=new PlayerCollision(p);
         Motion.Mode before=motion.mode;
-        for(int i=0;i<6;i++)motion.step(1.0/120,i==0?controls:controls.withoutEdges(),collision,bonus,cap);
+        for(int i=0;i<6;i++)motion.step(1.0/120,i==0?controls:controls.withoutEdges(),collision,bonus,cap,state!=null&&state.inCombat);
         HazeSounds.movement(before,motion,controls,p);
         p.setDeltaMovement(HazeActor.mc(motion.velocity.mul(0.05)));p.fallDistance=0;p.setSprinting(false);
         return true;

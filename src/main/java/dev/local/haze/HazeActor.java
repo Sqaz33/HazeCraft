@@ -26,13 +26,17 @@ public final class HazeActor {
     public final Abilities abilities=new Abilities(DATA);
     public final Map<Integer,Fixation> targets=new HashMap<>();
     public final List<Projectile> projectiles=new ArrayList<>();
+    public final List<Trace> traces=new ArrayList<>();
+    private long nextProjectile;
     public Controls input=Controls.NONE;
     public int lastSequence=-1,inputAge;
-    private double oldMaxHealth,oldHealth,meleeHeld,meleeReady,parryReady,parryUntil;
+    private double oldMaxHealth,oldHealth,meleeHeld,meleeReady,parryReady,parryUntil,combatUntil;
     public String action="idle";
     public double actionTime;
+    public double daggerStarted=-100;
     public double lastLeftShot=-100,lastRightShot=-100;
-    public record Projectile(V3 position,V3 velocity,V3 origin,double remaining,boolean dagger,double damage) {}
+    public record Projectile(V3 position,V3 velocity,V3 origin,double remaining,boolean dagger,double damage,long id) {}
+    public record Trace(long id,double time,V3 start,V3 end,boolean dagger){}
     public HazeActor(UUID owner) { this.owner=owner; }
     public void toggle(ServerPlayer p) {
         active=!active;
@@ -42,7 +46,7 @@ public final class HazeActor {
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(DATA.stat("EMaxHealth"));p.setHealth((float)DATA.stat("EMaxHealth"));
         } else {
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(oldMaxHealth);if(p.isAlive())p.setHealth((float)Math.min(oldHealth,p.getMaxHealth()));
-            p.setInvisible(false);input=Controls.NONE;projectiles.clear();
+            p.setInvisible(false);input=Controls.NONE;projectiles.clear();traces.clear();
             clearStatuses(p.level());targets.clear();
         }
         p.refreshDimensions();
@@ -61,8 +65,9 @@ public final class HazeActor {
         if(++inputAge>5) input=Controls.NONE;
         p.fallDistance=0;p.getFoodData().setFoodLevel(20);
         double dt=0.05;
+        traces.removeIf(trace->abilities.time-trace.time>0.5);
         double before=abilities.time;
-        if(input.edge(Controls.DAGGER) && abilities.cast(0)) setAction("dagger");
+        if(input.edge(Controls.DAGGER) && abilities.cast(0)) {daggerStarted=abilities.time;setAction("dagger");}
         if(input.edge(Controls.SMOKE) && abilities.cast(1)) {
             setAction("smoke");
             if(abilities.p(1,"DispelOnUse")>0){
@@ -107,10 +112,11 @@ public final class HazeActor {
     private void setAction(String next) { action=next;actionTime=0; }
     private void launch(ServerPlayer p,boolean dagger,Gun.Shot shot) {
         SkinnedAsset skeleton=SkinnedAsset.shared();String prefix="models/heroes_staging/haze/clips/";
-        String clip=dagger?prefix+"ability_sleep_dagger":prefix+(input.down(Controls.CROUCH)?"weapon_crouch_idle":"weapon_stand_idle");
-        String aim=prefix+"aim_weapon_idle";double pitch=input.pitch()-gun.recoil;
-        var layers=dagger?List.<SkinnedAsset.Layer>of():List.of(new SkinnedAsset.Layer(aim,0,false,1,null,true,aim+(pitch>0?"_down":"_up"),0,(float)Math.min(1,Math.abs(pitch)/90)));
-        var pose=skeleton.pose(clip,dagger?actionTime:abilities.time,true,layers);
+        String clip=prefix+(input.down(Controls.CROUCH)?"weapon_crouch_idle":"weapon_stand_idle");
+        double pitch=input.pitch()-gun.recoil;
+        var layers=new ArrayList<SkinnedAsset.Layer>();layers.add(AnimationSource.aim(skeleton,"haze","idle",pitch,0));
+        if(dagger)layers.add(AnimationSource.dagger(abilities.time-daggerStarted));
+        var pose=skeleton.pose(clip,abilities.time,true,layers);
         V3 pos=of(p.position()).add(SkinnedAsset.worldOffset(skeleton.attachment(pose,dagger?"palm_R":gun.shotCount%2==0?"muzzle_flash_l":"muzzle_flash_r"),input.yaw()));
         JsonObject w=dagger?DATA.ability("ability_sleep_dagger").getAsJsonObject("m_mapWeaponInfos").getAsJsonObject("primary"):DATA.weapon();
         double speed=Retail.number(w.get("m_flBulletSpeed"))*Retail.SOURCE_UNIT;
@@ -119,7 +125,9 @@ public final class HazeActor {
         double elevation=-Math.toDegrees(Math.asin(direction.y()))+(shot==null?0:shot.pitchOffset());
         V3 velocity=V3.look(yaw,elevation).mul(speed);
         double life=w.has("m_flBulletLifetime")?Retail.number(w.get("m_flBulletLifetime")):DATA.weapon().get("m_flBulletLifetime").getAsDouble();
-        projectiles.add(new Projectile(pos,velocity,pos,life,dagger,shot==null?abilities.p(0,"Damage"):shot.damage()));
+        long id=nextProjectile++;
+        projectiles.add(new Projectile(pos,velocity,pos,life,dagger,shot==null?abilities.p(0,"Damage"):shot.damage(),id));
+        traces.add(new Trace(id,abilities.time,pos,pos,dagger));
     }
     private V3 aimAt(ServerPlayer p,double pitch){
         V3 forward=V3.look(input.yaw(),pitch),right=V3.look(input.yaw()+90,0);
@@ -155,9 +163,11 @@ public final class HazeActor {
                     nearest=from.distanceToSqr(intersect.get());victim=entity;hit=intersect.get();
                 }
             }
+            V3 visualEnd=victim!=null?of(hit):nearest==Double.POSITIVE_INFINITY?end:of(block.getLocation());
+            for(int i=0;i<traces.size();i++)if(traces.get(i).id==shot.id){Trace old=traces.get(i);traces.set(i,new Trace(old.id,old.time,old.start,visualEnd,old.dagger));break;}
             if(victim!=null) impact(p,victim,shot,hit);
             else if(nearest==Double.POSITIVE_INFINITY && shot.remaining>dt && end.sub(shot.origin).length()<DATA.weapon().get("m_flRange").getAsDouble()*Retail.SOURCE_UNIT)
-                alive.add(new Projectile(end,shot.velocity.add(accel.mul(dt)),shot.origin,shot.remaining-dt,shot.dagger,shot.damage));
+                alive.add(new Projectile(end,shot.velocity.add(accel.mul(dt)),shot.origin,shot.remaining-dt,shot.dagger,shot.damage,shot.id));
         }
         projectiles.clear();projectiles.addAll(alive);
     }
@@ -180,9 +190,15 @@ public final class HazeActor {
         }
     }
     private void hurt(ServerPlayer p,LivingEntity e,double damage,boolean spirit) {
+        combat(e);
         DamageSource source=new DamageSource(p.level().registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(BULLET),p,p);
         e.hurtServer(p.level(),source,(float)damage);
     }
+    public void combat(Entity other){
+        String field=other instanceof Player?"m_flInCombatWithHeroDuration":other instanceof net.minecraft.world.entity.monster.Monster?"m_flInCombatWithNonHeroDuration":"m_flInCombatWithNeutralDuration";
+        combatUntil=Math.max(combatUntil,abilities.time+Retail.number(DATA.root.getAsJsonObject("genericData").get(field)));
+    }
+    public boolean inCombat(){return abilities.time<combatUntil;}
     private void flurryShot(ServerPlayer p,Gun.Shot shot) {
         double radius=abilities.p(3,"Radius"),min=abilities.p(3,"RadiusMin");
         List<LivingEntity> candidates=p.level().getEntitiesOfClass(LivingEntity.class,p.getBoundingBox().inflate(radius),e->e!=p && e.isAlive() && !(e instanceof Player));
@@ -195,7 +211,8 @@ public final class HazeActor {
             V3 origin=of(p.position()).add(new V3(0,1.5,0));
             V3 target=of(e.position()).add(new V3(0,e.getBbHeight()/2,0));
             V3 velocity=target.sub(origin).normalized().mul(gun.f("m_flBulletSpeed")*Retail.SOURCE_UNIT);
-            projectiles.add(new Projectile(origin,velocity,origin,gun.f("m_flBulletLifetime"),false,shot.damage()));
+            long id=nextProjectile++;projectiles.add(new Projectile(origin,velocity,origin,gun.f("m_flBulletLifetime"),false,shot.damage(),id));
+            traces.add(new Trace(id,abilities.time,origin,origin,false));
         }
     }
     private void melee(ServerPlayer p,boolean heavy) {
@@ -250,7 +267,9 @@ public final class HazeActor {
         j.addProperty("reload",gun.reloadRemaining);j.addProperty("time",abilities.time);j.addProperty("recoil",gun.recoil);j.addProperty("bloom",gun.bloom);
         j.addProperty("smoke",abilities.smokeActive());j.addProperty("invisible",abilities.invisible());j.addProperty("flurry",abilities.flurry());
         j.addProperty("action",action);j.addProperty("actionTime",actionTime);j.addProperty("shots",gun.shotCount);
+        j.addProperty("daggerTime",abilities.time-daggerStarted);
         j.addProperty("leftShot",lastLeftShot);j.addProperty("rightShot",lastRightShot);
+        j.addProperty("inCombat",inCombat());
         j.addProperty("smokeRemaining",Math.max(0,abilities.smokeUntil-abilities.time));j.addProperty("danceRemaining",Math.max(0,abilities.flurryUntil-abilities.time));j.addProperty("smokeCharges",abilities.smokeCharges);
         JsonArray ranks=new JsonArray(),cooldowns=new JsonArray();
         for(int i=0;i<4;i++) { ranks.add(abilities.ranks[i]);cooldowns.add(abilities.cooldown(i)); }
@@ -261,7 +280,8 @@ public final class HazeActor {
         JsonArray bullets=new JsonArray();for(Projectile p0:projectiles) {
             JsonArray b=new JsonArray();b.add(p0.position.x());b.add(p0.position.y());b.add(p0.position.z());b.add(p0.velocity.x());b.add(p0.velocity.y());b.add(p0.velocity.z());b.add(p0.dagger?1:0);bullets.add(b);
             if(bullets.size()>=128) break;
-        }j.add("bullets",bullets);return j.toString();
+        }j.add("bullets",bullets);
+        JsonArray fx=new JsonArray();for(Trace trace:traces){JsonArray line=new JsonArray();line.add(trace.id);line.add(trace.time);line.add(trace.start.x());line.add(trace.start.y());line.add(trace.start.z());line.add(trace.end.x());line.add(trace.end.y());line.add(trace.end.z());line.add(trace.dagger?1:0);fx.add(line);if(fx.size()>=32)break;}j.add("fx",fx);return j.toString();
     }
     public static V3 of(Vec3 v) { return new V3(v.x,v.y,v.z); }
     public static Vec3 mc(V3 v) { return new Vec3(v.x(),v.y(),v.z()); }

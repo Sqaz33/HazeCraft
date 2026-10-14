@@ -37,6 +37,7 @@ public final class HazeMod implements ModInitializer {
         });
         ServerLivingEntityEvents.AFTER_DAMAGE.register((entity,source,base,taken,blocked)->{
             if(taken<=0)return;
+            HazeActor damaged=ACTORS.get(entity.getUUID());if(damaged!=null&&damaged.active)damaged.combat(source.getEntity());
             for(HazeActor actor:ACTORS.values())if(actor.active&&actor.dimension==entity.level().dimension()){
                 var f=actor.targets.get(entity.getId());if(f!=null)f.damaged(dev.local.haze.sim.Retail.DATA,actor.abilities.ranks[0],actor.abilities.time);
             }

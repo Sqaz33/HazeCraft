@@ -81,7 +81,7 @@ class RetailSimulationTest {
     }
     @Test void originalMuzzleAttachmentsPointForwardAfterSourceAxisConversion(){
         SkinnedAsset a=SkinnedAsset.shared();String prefix="models/heroes_staging/haze/clips/";
-        var pose=a.pose(prefix+"weapon_stand_idle",0,false,List.of(new SkinnedAsset.Layer(prefix+"aim_weapon_idle",0,false,1,null,true)));
+        var pose=a.pose(prefix+"weapon_stand_idle",0,false,List.of(AnimationSource.aim(a,"haze","idle",0,0)));
         V3 right=SkinnedAsset.worldOffset(a.attachment(pose,"muzzle_flash_r"),0),left=SkinnedAsset.worldOffset(a.attachment(pose,"muzzle_flash_l"),0);
         assertTrue(right.finite()&&left.finite());assertTrue(right.z()>0.3,"Right muzzle is not forward: "+right);assertTrue(left.z()>0.3,"Left muzzle is not forward: "+left);
         assertTrue(right.y()>1&&right.y()<2.5);assertTrue(left.y()>1&&left.y()<2.5);
@@ -101,6 +101,13 @@ class RetailSimulationTest {
         assertTrue(m.stamina<2.01);assertTrue(m.airJumpUsed);
     }
     @Test void malformedTimeStepsRejected(){assertThrows(IllegalArgumentException.class,()->new Motion(D).step(1,Controls.NONE,deltaGround(new V3[]{V3.ZERO}),0,-1));}
+    @Test void sprintRampsToHazeSpeedAndStopsDuringCombat(){
+        Motion m=new Motion(D);V3[]pos={V3.ZERO};Controls forward=new Controls(Controls.FORWARD,0,0,0);
+        for(int i=0;i<1200;i++)m.step(1.0/120,forward,deltaGround(pos),0,-1,false);
+        assertEquals(1.6,m.sprintBonus,1e-9);assertEquals(9.8,m.velocity.horizontal(),1e-6);assertEquals(Motion.Mode.SPRINT,m.mode);
+        m.step(1.0/120,forward,deltaGround(pos),0,-1,true);assertEquals(0,m.sprintBonus);assertEquals(Motion.Mode.RUN,m.mode);
+        assertEquals(.6,D.field("citadel_ability_sprint","m_flSprintAccMS"),1e-7);
+    }
     private static Motion.Collision deltaGround(V3[]pos){return(delta,crouch)->{V3 next=pos[0].add(delta);boolean ground=next.y()<=0;V3 actual=ground?new V3(delta.x(),-pos[0].y(),delta.z()):delta;pos[0]=pos[0].add(actual);return new Motion.MoveResult(actual,ground,false,V3.ZERO,0);};}
     @Test void allOriginalAnimationTracksDecodeAndStayFinite(){
         SkinnedAsset asset=SkinnedAsset.load();assertEquals(444,asset.clips.size());assertEquals(6,asset.primitives.length);assertEquals(124,asset.nodes.length);

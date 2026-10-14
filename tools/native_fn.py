@@ -5,13 +5,24 @@ import pefile,capstone
 p=argparse.ArgumentParser();p.add_argument('address',nargs='+');p.add_argument('--out',required=True);a=p.parse_args()
 pe=pefile.PE('D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll',fast_load=True)
 pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXCEPTION']]);base=pe.OPTIONAL_HEADER.ImageBase
+def primary(entry):
+ while getattr(entry.unwindinfo,'UNW_FLAG_CHAININFO',False):entry=entry.unwindinfo._chained_entry
+ return entry.struct.BeginAddress
+groups={}
+for entry in pe.DIRECTORY_ENTRY_EXCEPTION:
+ root=primary(entry);groups.setdefault(root,[]).append(entry.struct)
 md=capstone.Cs(capstone.CS_ARCH_X86,capstone.CS_MODE_64);md.detail=True;result=[]
 for address in a.address:
- va=int(address,16);fn=next((f.struct for f in pe.DIRECTORY_ENTRY_EXCEPTION if base+f.struct.BeginAddress<=va<base+f.struct.EndAddress),None)
+ va=int(address,16);entry=next((f for f in pe.DIRECTORY_ENTRY_EXCEPTION if base+f.struct.BeginAddress<=va<base+f.struct.EndAddress),None)
+ fn=entry.struct if entry else None
  leaf=fn is None
  if leaf:
   class Leaf:pass
   fn=Leaf();fn.BeginAddress=va-base;fn.EndAddress=fn.BeginAddress+1024
+ else:
+  fragments=groups[primary(entry)]
+  class Whole:pass
+  fn=Whole();fn.BeginAddress=min(f.BeginAddress for f in fragments);fn.EndAddress=max(f.EndAddress for f in fragments)
  rows=[]
  for ins in md.disasm(pe.get_data(fn.BeginAddress,fn.EndAddress-fn.BeginAddress),base+fn.BeginAddress):
   row={'address':hex(ins.address),'mnemonic':ins.mnemonic,'operands':ins.op_str}

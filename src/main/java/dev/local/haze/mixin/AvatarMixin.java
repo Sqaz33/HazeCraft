@@ -14,10 +14,11 @@ public abstract class AvatarMixin {
     private void haze$dimensions(Pose pose,CallbackInfoReturnable<EntityDimensions> cir){
         if(!((Object)this instanceof Player p)||!HazeHooks.active(p))return;
         Retail d=Retail.DATA;boolean crouch=pose==Pose.CROUCHING;
-        float radius=(float)(d.model.get("m_flCollisionRadius").getAsDouble()*Retail.SOURCE_UNIT);
-        float height=(float)(d.model.get("m_flCollisionHeight").getAsDouble()*Retail.SOURCE_UNIT);
+        var mins=d.model.getAsJsonArray("m_vCollisionHullMins");var maxs=d.model.getAsJsonArray("m_vCollisionHullMaxs");
+        float width=(float)((maxs.get(0).getAsDouble()-mins.get(0).getAsDouble())*Retail.SOURCE_UNIT);
+        float height=(float)((maxs.get(2).getAsDouble()-mins.get(2).getAsDouble())*Retail.SOURCE_UNIT);
         float eye=(float)(d.camera.get(crouch?"m_flCameraHeightCrouching":"m_flCameraHeightStanding").getAsDouble()*Retail.SOURCE_UNIT);
         if(crouch)height=(float)(d.camera.get("m_flCameraHeightCrouching").getAsDouble()*Retail.SOURCE_UNIT);
-        cir.setReturnValue(EntityDimensions.scalable(radius*2,height).withEyeHeight(Math.min(eye,height)));
+        cir.setReturnValue(EntityDimensions.scalable(width,height).withEyeHeight(eye));
     }
 }

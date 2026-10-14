@@ -6,6 +6,8 @@ p=argparse.ArgumentParser();p.add_argument('name');p.add_argument('out');a=p.par
 path=Path('D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll')
 pe=pefile.PE(str(path),fast_load=True);base=pe.OPTIONAL_HEADER.ImageBase;data=path.read_bytes()
 name=('\x2e?AV'+a.name+'@@\0').encode();offset=data.find(name)
+if offset<0:
+ name=('\x2e?AU'+a.name+'@@\0').encode();offset=data.find(name)
 if offset<0:raise SystemExit('RTTI type not found')
 td=pe.get_rva_from_offset(offset)-16
 cols=[]

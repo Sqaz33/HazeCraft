@@ -16,17 +16,21 @@ public final class Motion {
     public V3 velocity=V3.ZERO;
     public Mode mode=Mode.IDLE;
     public double time,stamina,dashStart=-100,dashDuration,dashDistance,lastGroundTime=-100,
-        lastWallJump=-100,slideStart=-100,parryUntil,parryReady,meleeStart=-100;
+        lastWallJump=-100,slideStart=-100,jumpStart=-100,mantleStart=-100,parryUntil,parryReady,meleeStart=-100,sprintBonus;
     public V3 dashDirection=V3.ZERO,wallNormal=V3.ZERO;
     public boolean grounded=true,wall,airJumpUsed,airDashUsed;
     public int mantleHeight=32;
     private V3 mantleRemaining=V3.ZERO;
-    private double mantleLeft,zipSpeed;
+    private double mantleLeft,mantleHorizontalTime,zipSpeed;
+    private boolean mantleVertical;
     private double slope;
     public Motion(Retail data) { this.data=data;stamina=data.stat("EStamina"); }
     private double f(String id,String key) { return data.field(id,key); }
     private double p(String id,String key) { return data.prop(id,key,0); }
     public void step(double dt,Controls input,Collision world,double bonusSpeed,double capSpeed) {
+        step(dt,input,world,bonusSpeed,capSpeed,false);
+    }
+    public void step(double dt,Controls input,Collision world,double bonusSpeed,double capSpeed,boolean inCombat) {
         if(dt<=0 || dt>0.05) throw new IllegalArgumentException("Motion substep");
         time+=dt;
         stamina=Math.min(data.stat("EStamina"),stamina+data.stat("EStaminaRegenPerSecond")*dt);
@@ -40,6 +44,8 @@ public final class Motion {
             }
         }
         V3 wish=input.wish();
+        boolean sprint=!inCombat&&wish.length()>0&&!input.down(Controls.CROUCH)&&!input.down(Controls.AIM)&&!input.down(Controls.FIRE)&&!input.down(Controls.MELEE)&&capSpeed<0;
+        sprintBonus=sprint?Math.min(data.stat("ESprintSpeed"),sprintBonus+f("citadel_ability_sprint","m_flSprintAccMS")*dt):0;
         if(input.edge(Controls.DASH) && stamina>=1 && (grounded || !airDashUsed) && mode!=Mode.MANTLE) {
             dashStart=time-dt;dashDirection=wish.length()>0?wish:V3.look(input.yaw(),0);
             boolean ground=grounded;
@@ -50,12 +56,16 @@ public final class Motion {
         }
         if(mode==Mode.MANTLE) {
             double t=Math.min(1,dt/Math.max(dt,mantleLeft));
-            V3 move=mantleRemaining.mul(t);mantleRemaining=mantleRemaining.sub(move);mantleLeft-=dt;
-            collide(world,move,false,dt);
-            if(mantleLeft<=0) { mode=Mode.RUN;velocity=wish.mul(data.stat("EMaxMoveSpeed")); }
+            V3 move=mantleVertical?new V3(0,mantleRemaining.y()*t,0):mantleRemaining.flat().mul(t);
+            MoveResult result=collide(world,move,false,dt);mantleRemaining=mantleRemaining.sub(result.actual());mantleLeft-=dt;
+            if(mantleLeft<=1e-9) {
+                if(mantleVertical&&Math.abs(mantleRemaining.y())<1e-4){mantleVertical=false;mantleLeft=mantleHorizontalTime;}
+                else {mode=grounded?Mode.RUN:Mode.AIR;velocity=wish.mul(data.stat("EMaxMoveSpeed"));}
+            }
             return;
         }
         if(input.edge(Controls.JUMP)) jump(input,world);
+        if(mode==Mode.MANTLE)return;
         if(input.down(Controls.JUMP) && mode!=Mode.ROPE && world.rope()) mode=Mode.ROPE;
         if(mode==Mode.ROPE) {
             if(!world.rope() || input.edge(Controls.JUMP)) {
@@ -93,13 +103,14 @@ public final class Motion {
                 } else fraction=t1-t0;
                 V3 displacement=dashDirection.mul(dashDistance*fraction);
                 velocity=displacement.mul(1/dt).withY(mode==Mode.DASH_AIR?0:velocity.y());
+                if(mode==Mode.DASH_GROUND)gravity(dt);
                 collide(world,displacement.add(new V3(0,velocity.y()*dt,0)),false,dt);return;
             } else {
                 if(mode==Mode.DASH_AIR) velocity=velocity.mul(f("citadel_ability_dash","m_flAirDashEndVelocityScale"));
                 mode=grounded?Mode.RUN:Mode.AIR;dash=false;
             }
         }
-        double max=data.stat("EMaxMoveSpeed")+bonusSpeed;
+        double max=data.stat("EMaxMoveSpeed")+bonusSpeed+sprintBonus;
         if(input.down(Controls.CROUCH) && grounded && mode!=Mode.SLIDE) {
             if(velocity.horizontal()>=f("citadel_ability_slide","m_flMinActivationSpeed")*Retail.SOURCE_UNIT) { mode=Mode.SLIDE;slideStart=time; }
             else { mode=Mode.CROUCH;max=data.stat("ECrouchSpeed")+bonusSpeed; }
@@ -143,14 +154,14 @@ public final class Motion {
         collide(world,velocity.mul(dt),input.down(Controls.CROUCH),dt);
         if(!grounded) mode=Mode.AIR;
         else if(input.down(Controls.CROUCH)) mode=Mode.CROUCH;
-        else mode=wish.length()>0?Mode.RUN:Mode.IDLE;
+        else mode=wish.length()>0?(sprintBonus>0?Mode.SPRINT:Mode.RUN):Mode.IDLE;
         if(!velocity.finite()) throw new IllegalStateException("Non-finite Haze velocity");
     }
     private void jump(Controls in,Collision world) {
         if(mode==Mode.ROPE || mode==Mode.ZIPLINE) return;
         if((mode==Mode.DASH_GROUND || mode==Mode.DASH_AIR) && time-dashStart>=f("citadel_ability_jump","m_flDashJumpStartTime") && time-dashStart<=f("citadel_ability_jump","m_flDashJumpEndTime") && stamina>=1) {
             stamina-=1;velocity=dashDirection.mul(f("citadel_ability_jump","m_flDashJumpDistanceInMeters")/dashDuration)
-                .withY(f("citadel_ability_jump","m_flDashJumpVerticalSpeed")*Retail.SOURCE_UNIT);mode=Mode.AIR;grounded=false;return;
+                .withY(f("citadel_ability_jump","m_flDashJumpVerticalSpeed")*Retail.SOURCE_UNIT);mode=Mode.AIR;grounded=false;jumpStart=time;return;
         }
         if(wall) {
             V3 target=world.mantle(in.wish(),160*Retail.SOURCE_UNIT);
@@ -160,20 +171,20 @@ public final class Motion {
                 JsonObject type=types.get(types.size()-1).getAsJsonObject();
                 for(JsonElement t:types) if(height<=Retail.number(t.getAsJsonObject().get("m_flMaxHeight"))) { type=t.getAsJsonObject();break; }
                 mantleHeight=(int)Retail.number(type.get("m_flAnimHeight"));
-                mantleLeft=type.has("m_flVerticalTime")?Retail.number(type.get("m_flVerticalTime")):f("citadel_ability_jump","m_flLateJumpGraceWindow");
-                mode=Mode.MANTLE;velocity=V3.ZERO;return;
+                mantleLeft=Retail.number(type.get("m_flVerticalTime"));mantleHorizontalTime=Retail.number(type.get("m_flHorizontalTime"));mantleVertical=true;
+                mode=Mode.MANTLE;mantleStart=time;velocity=V3.ZERO;return;
             }
             double power=Math.min(1,(time-lastWallJump)/f("citadel_ability_jump","m_flWallJumpFullPowerRechargeTime"));
             power=Math.max(f("citadel_ability_jump","m_flWallJumpPowerMin"),power);
             velocity=wallNormal.mul(f("citadel_ability_jump","m_flWallJumpMaxOutSpeed")*Retail.SOURCE_UNIT*power)
                 .withY(f("citadel_ability_jump","m_flWallJumpUpSpeed")*Retail.SOURCE_UNIT*power);
-            lastWallJump=time;mode=Mode.AIR;grounded=false;return;
+            lastWallJump=time;mode=Mode.AIR;grounded=false;jumpStart=time;return;
         }
         if(grounded || time-lastGroundTime<=f("citadel_ability_jump","m_flLateJumpGraceWindow")) {
-            velocity=velocity.withY(p("citadel_ability_jump","VerticalSpeed")*Retail.SOURCE_UNIT);grounded=false;mode=Mode.AIR;lastGroundTime=-100;
+            velocity=velocity.withY(p("citadel_ability_jump","VerticalSpeed")*Retail.SOURCE_UNIT);grounded=false;mode=Mode.AIR;lastGroundTime=-100;jumpStart=time;
         } else if(!airJumpUsed && stamina>=1) {
             stamina-=1;airJumpUsed=true;
-            velocity=velocity.withY(p("citadel_ability_jump","VerticalSpeed")*p("citadel_ability_jump","AirJumpVerticalSpeedPercent")/100*Retail.SOURCE_UNIT);mode=Mode.AIR;
+            velocity=velocity.withY(p("citadel_ability_jump","VerticalSpeed")*p("citadel_ability_jump","AirJumpVerticalSpeedPercent")/100*Retail.SOURCE_UNIT);mode=Mode.AIR;jumpStart=time;
         }
     }
     private void gravity(double dt) {
@@ -182,11 +193,12 @@ public final class Motion {
         double terminal=data.nativeFloat("sv_maxvelocity")*Retail.SOURCE_UNIT;
         velocity=velocity.withY(Math.max(-terminal,velocity.y()));
     }
-    private void collide(Collision world,V3 displacement,boolean crouch,double dt) {
+    private MoveResult collide(Collision world,V3 displacement,boolean crouch,double dt) {
         MoveResult r=world.move(displacement,crouch);
         grounded=r.ground();wall=r.wall();wallNormal=r.wallNormal();slope=r.slope();
         if(Math.abs(r.actual().x()-displacement.x())>1e-7) velocity=new V3(0,velocity.y(),velocity.z());
         if(Math.abs(r.actual().z()-displacement.z())>1e-7) velocity=new V3(velocity.x(),velocity.y(),0);
         if(Math.abs(r.actual().y()-displacement.y())>1e-7) velocity=velocity.withY(0);
+        return r;
     }
 }

@@ -37,6 +37,9 @@ native_ability_file=LAB/'evidence/native-ability-defaults.json'
 if native_ability_file.exists():native_abilities=json.loads(native_ability_file.read_text())
 for ability,fields in native_abilities.items():
     for key,evidence in fields.items():abilities[ability].setdefault(key,evidence['value'])
+native_mantle=json.loads((LAB/'evidence/native-mantle-type-defaults.json').read_text())
+for mantle in abilities['citadel_ability_mantle']['m_vecMantleTypes']:
+    for key,evidence in native_mantle.items():mantle.setdefault(key,evidence['value'])
 settings_path=pathlib.Path('C:/Program Files (x86)/Steam/userdata/1035274860/1422450/local/cfg/user_convars_0_slot0.vcfg')
 if settings_path.exists():
     import re
@@ -48,6 +51,11 @@ if settings_path.exists():
 profile=dict(build='25917577',clientVersion=6779,revision=11123977,date='2026-10-13',
              hero=hero,abilities={k:abilities[k] for k in sorted(names) if k in abilities},
              nativeFloatDefaults=native,modelData=model_kv,modelKeys=model_keys,localInputSettings=settings,attachments=attachments,nativeAbilityDefaults=native_abilities)
+generic=loads((LAB/'retail/scripts/generic_data.vdata').read_text())
+native_generic=json.loads((LAB/'evidence/native-generic-defaults.json').read_text())
+for key,evidence in native_generic.items():generic.setdefault(key,evidence['value'])
+profile['genericData']=generic;profile['nativeGenericDefaults']=native_generic
+profile['nativeMantleTypeDefaults']=native_mantle
 (DATA/'profile.json').write_text(json.dumps(profile,separators=(',',':')),encoding='utf8')
 if '--profile-only' in sys.argv:print('Updated pinned retail profile');sys.exit(0)
 
@@ -73,6 +81,9 @@ def quat_matrix(q):
 parents=[-1]*len(g['nodes'])
 for i,n in enumerate(g['nodes']):
     for c in n.get('children',[]): parents[c]=i
+joint_ids={j for skin in g['skins']for j in skin['joints']}
+skeleton_roots={j for j in joint_ids if parents[j]not in joint_ids}
+motion_node=next(i for i,n in enumerate(g['nodes'])if n.get('name')=='root_motion')
 
 out=gzip.open(ASSETS/'haze.hzm.gz','wb',compresslevel=6)
 def ints(*a):out.write(struct.pack('>'+str(len(a))+'i',*a))
@@ -114,8 +125,28 @@ summary=[]
 for anim in g['animations']:
     string(anim['name']); ints(len(anim['channels']))
     duration=0
+    motion_channel=next((c for c in anim['channels']if c['target']=={'node':motion_node,'path':'translation'}),None)
+    motion_times=motion_values=None
+    if motion_channel is not None and not anim.get('extras',{}).get('additive'):
+        motion_sampler=anim['samplers'][motion_channel['sampler']]
+        motion_times=accessor(motion_sampler['input']).ravel();motion_values=accessor(motion_sampler['output'])
     for c in anim['channels']:
         s=anim['samplers'][c['sampler']]; t=accessor(s['input']).ravel(); v=accessor(s['output'])
+        # The export bakes the trajectory into every skeleton root, including pelvis.
+        # Remove it before any masks/blends, otherwise a knife layer scales that drift.
+        # Minecraft receives the movement once from Motion, with the original body sway.
+        if motion_values is not None and c['target']['node']in skeleton_roots and c['target']['path']=='translation':
+            v-=np.column_stack([np.interp(t,motion_times,motion_values[:,axis])for axis in range(3)])
+        # AG2's retargeted additive export repeats the Source->glTF root basis.
+        # Delta rotations must be identity at neutral, not a second basis change.
+        # The compiled clips and exporter conversion establish this constant.
+        if anim['name'].startswith('models/heroes_staging/haze/clips/') and anim.get('extras',{}).get('additive') and g['nodes'][c['target']['node']].get('name')=='root_motion' and c['target']['path']=='rotation':
+            conversion=np.array([-.5,-.5,-.5,.5],dtype=np.float32)
+            assert np.max(np.minimum(np.linalg.norm(v-conversion,axis=1),np.linalg.norm(v+conversion,axis=1)))<.00001,anim['name']
+            inverse=conversion.copy();inverse[:3]*=-1
+            xyz=inverse[3]*v[:,:3]+v[:,3,None]*inverse[:3]+np.cross(inverse[:3],v[:,:3])
+            w=inverse[3]*v[:,3]-v[:,:3]@inverse[:3]
+            v=np.column_stack((xyz,w))
         assert s.get('interpolation','LINEAR') in ('LINEAR','STEP')
         assert len(t)==len(v) and np.isfinite(v).all() and (np.diff(t)>=0).all()
         ints(c['target']['node'],{'translation':0,'rotation':1,'scale':2}[c['target']['path']],len(t),v.shape[1],int(s.get('interpolation')=='STEP'))
@@ -127,6 +158,8 @@ out.close()
 for p in (LAB/'retail/panorama/images/hud/abilities/haze').glob('*.png'):
     shutil.copyfile(p,ASSETS/p.name)
 manifest=dict(sourceBuild='25917577',meshPrimitives=sum(len(m['primitives']) for m in g['meshes']),
+    additiveRootBasisCorrection='AG2 root_motion inverse(SourceToGltfRotation) * delta; verified constant basis on every corrected track',
+    rootMotionRemoval='Original root_motion translation subtracted from every skeleton root before blending; physical movement is simulated once',
     nodeCount=len(g['nodes']),animationCount=len(summary),
     gltfSha256=hashlib.sha256((LAB/'model/haze.gltf').read_bytes()).hexdigest(),
     files=[dict(path=p.relative_to(ASSETS).as_posix(),sha256=hashlib.sha256(p.read_bytes()).hexdigest(),size=p.stat().st_size) for p in ASSETS.rglob('*') if p.is_file()])

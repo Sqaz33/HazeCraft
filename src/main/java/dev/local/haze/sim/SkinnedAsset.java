@@ -78,7 +78,7 @@ public final class SkinnedAsset {
         return new V3(position.x,position.y,position.z);
     }
     public static V3 worldOffset(V3 local,double yaw){
-        double angle=Math.toRadians(90-yaw),c=Math.cos(angle),s=Math.sin(angle);
+        double angle=Math.toRadians(-yaw),c=Math.cos(angle),s=Math.sin(angle);
         return new V3(c*local.x()+s*local.z(),local.y(),-s*local.x()+c*local.z());
     }
     public Matrix4f[] pose(String name,double time,boolean loop) {
