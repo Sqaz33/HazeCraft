@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "haze",
+  "version": "${version}",
+  "name": "Deadlock Haze — private local port",
+  "description": "Local Haze mechanics and retail asset conversion for the owner's private Minecraft instance.",
+  "environment": "*",
+  "entrypoints": {},
+  "depends": {"fabricloader": ">=0.19.5", "minecraft": "~1.21.11", "java": ">=21", "fabric-api": "*"}
+}
