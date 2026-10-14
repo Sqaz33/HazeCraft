@@ -92,8 +92,6 @@ public final class HazeRenderer {
                 case DASH_AIR: return prefix+"dash_air_"+(c.down(Controls.LEFT)?"left":c.down(Controls.RIGHT)?"right":c.down(Controls.BACK)?"back":"forward");
                 case SLIDE: return prefix+(m.time-m.slideStart<asset.clips.get(prefix+"slide_start").duration()?"slide_start":"slide_loop");
                 case MANTLE: return prefix+"mantle_"+m.mantleHeight;
-                case ROPE: return prefix+(m.velocity.y()>0?"rope_climb_up":m.velocity.y()<0?"rope_climb_down":"rope_climb_idle");
-                case ZIPLINE: return prefix+"zipline_attached_loop";
                 case AIR:
                     String jump=s.smoke?"jump_invis_start":"jump_ground";
                     return prefix+(m.time-m.jumpStart<asset.clips.get(prefix+jump).duration()?jump:s.smoke?"jump_invis_in_air_loop":"in_air_loop_down");

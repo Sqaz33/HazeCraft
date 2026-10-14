@@ -4,13 +4,11 @@ import com.google.gson.*;
 
 /** Guest-space motion. Collision callbacks are the only Minecraft dependency. */
 public final class Motion {
-    public enum Mode { IDLE, RUN, SPRINT, CROUCH, DASH_GROUND, DASH_AIR, SLIDE, AIR, MANTLE, ROPE, ZIPLINE, MELEE }
+    public enum Mode { IDLE, RUN, SPRINT, CROUCH, DASH_GROUND, DASH_AIR, SLIDE, AIR, MANTLE, MELEE }
     public record MoveResult(V3 actual,boolean ground,boolean wall,V3 wallNormal,double slope) {}
     public interface Collision {
         MoveResult move(V3 displacement,boolean crouch);
-        default boolean rope() { return false; }
         default V3 mantle(V3 direction,double maxHeight) { return null; }
-        default V3 zipDirection() { return null; }
     }
     private final Retail data;
     public V3 velocity=V3.ZERO;
@@ -20,8 +18,9 @@ public final class Motion {
     public V3 dashDirection=V3.ZERO,wallNormal=V3.ZERO;
     public boolean grounded=true,wall,airJumpUsed,airDashUsed;
     public int mantleHeight=32;
+    public int wallJumps;
     private V3 mantleRemaining=V3.ZERO;
-    private double mantleLeft,mantleHorizontalTime,zipSpeed;
+    private double mantleLeft,mantleHorizontalTime;
     private boolean mantleVertical;
     private double slope;
     public Motion(Retail data) { this.data=data;stamina=data.stat("EStamina"); }
@@ -34,7 +33,7 @@ public final class Motion {
         if(dt<=0 || dt>0.05) throw new IllegalArgumentException("Motion substep");
         time+=dt;
         stamina=Math.min(data.stat("EStamina"),stamina+data.stat("EStaminaRegenPerSecond")*dt);
-        if(grounded) { lastGroundTime=time;airJumpUsed=false;airDashUsed=false; }
+        if(grounded) { lastGroundTime=time;airJumpUsed=false;airDashUsed=false;wallJumps=0; }
         if(input.edge(Controls.PARRY) && time>=parryReady) {
             parryUntil=time+f("citadel_ability_melee_parry","m_flActiveTime");
             parryReady=time+p("citadel_ability_melee_parry","AbilityCooldown");
@@ -66,28 +65,6 @@ public final class Motion {
         }
         if(input.edge(Controls.JUMP)) jump(input,world);
         if(mode==Mode.MANTLE)return;
-        if(input.down(Controls.JUMP) && mode!=Mode.ROPE && world.rope()) mode=Mode.ROPE;
-        if(mode==Mode.ROPE) {
-            if(!world.rope() || input.edge(Controls.JUMP)) {
-                mode=Mode.AIR;
-                velocity=V3.look(input.yaw(),0).mul(f("citadel_ability_climb_rope","m_flJumpOffHorizontal")*Retail.SOURCE_UNIT)
-                    .withY(f("citadel_ability_climb_rope","m_flJumpOffVertical")*Retail.SOURCE_UNIT);
-            } else {
-                double up=input.down(Controls.CROUCH)?-f("citadel_ability_climb_rope","m_flClimbSpeedDown"):
-                    (input.down(Controls.FORWARD)||input.down(Controls.JUMP)?f("citadel_ability_climb_rope","m_flClimbSpeedUp"):0);
-                velocity=new V3(0,up*Retail.SOURCE_UNIT,0);
-                collide(world,velocity.mul(dt),false,dt); return;
-            }
-        }
-        V3 zip=world.zipDirection();
-        if(mode==Mode.ZIPLINE) {
-            if(zip==null || input.edge(Controls.JUMP) || input.down(Controls.CROUCH)) {
-                mode=Mode.AIR;velocity=velocity.withY(input.down(Controls.CROUCH)?0:p("citadel_ability_zip_line","DismountVerticalSpeed")*Retail.SOURCE_UNIT);
-            } else {
-                zipSpeed=Math.min(p("citadel_ability_zip_line","ZipSpeedOuter")*Retail.SOURCE_UNIT,zipSpeed+p("citadel_ability_zip_line","ZipAcc")*Retail.SOURCE_UNIT*dt);
-                velocity=zip.mul(zipSpeed);collide(world,velocity.mul(dt),false,dt);return;
-            }
-        } else if(zip!=null && input.down(Controls.JUMP)) { mode=Mode.ZIPLINE;zipSpeed=p("citadel_ability_zip_line","LatchInitialSpeed")*Retail.SOURCE_UNIT; }
         boolean dash=mode==Mode.DASH_GROUND || mode==Mode.DASH_AIR;
         if(dash) {
             double elapsed=time-dashStart;
@@ -158,7 +135,6 @@ public final class Motion {
         if(!velocity.finite()) throw new IllegalStateException("Non-finite Haze velocity");
     }
     private void jump(Controls in,Collision world) {
-        if(mode==Mode.ROPE || mode==Mode.ZIPLINE) return;
         if((mode==Mode.DASH_GROUND || mode==Mode.DASH_AIR) && time-dashStart>=f("citadel_ability_jump","m_flDashJumpStartTime") && time-dashStart<=f("citadel_ability_jump","m_flDashJumpEndTime") && stamina>=1) {
             stamina-=1;velocity=dashDirection.mul(f("citadel_ability_jump","m_flDashJumpDistanceInMeters")/dashDuration)
                 .withY(f("citadel_ability_jump","m_flDashJumpVerticalSpeed")*Retail.SOURCE_UNIT);mode=Mode.AIR;grounded=false;jumpStart=time;return;
@@ -174,8 +150,11 @@ public final class Motion {
                 mantleLeft=Retail.number(type.get("m_flVerticalTime"));mantleHorizontalTime=Retail.number(type.get("m_flHorizontalTime"));mantleVertical=true;
                 mode=Mode.MANTLE;mantleStart=time;velocity=V3.ZERO;return;
             }
-            double power=Math.min(1,(time-lastWallJump)/f("citadel_ability_jump","m_flWallJumpFullPowerRechargeTime"));
-            power=Math.max(f("citadel_ability_jump","m_flWallJumpPowerMin"),power);
+            double cost=wallJumps<data.nativeFloat("citadel_wall_jump_num_free_wall_jumps")?0:
+                data.nativeFloat(wallJumps==0?"citadel_initial_wall_jump_stamina_cost":"citadel_wall_jump_stamina_cost");
+            if(stamina<cost)return;
+            stamina-=cost;wallJumps++;
+            double power=SourceMath.wallJumpPower(data,time-lastWallJump);
             velocity=wallNormal.mul(f("citadel_ability_jump","m_flWallJumpMaxOutSpeed")*Retail.SOURCE_UNIT*power)
                 .withY(f("citadel_ability_jump","m_flWallJumpUpSpeed")*Retail.SOURCE_UNIT*power);
             lastWallJump=time;mode=Mode.AIR;grounded=false;jumpStart=time;return;

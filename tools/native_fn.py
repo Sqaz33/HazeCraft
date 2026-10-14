@@ -24,7 +24,25 @@ for address in a.address:
   class Whole:pass
   fn=Whole();fn.BeginAddress=min(f.BeginAddress for f in fragments);fn.EndAddress=max(f.EndAddress for f in fragments)
  rows=[]
- for ins in md.disasm(pe.get_data(fn.BeginAddress,fn.EndAddress-fn.BeginAddress),base+fn.BeginAddress):
+ if leaf:
+  pending=[va];decoded={}
+  while pending:
+   block=pending.pop()
+   for ins in md.disasm(pe.get_data(block-base,base+fn.EndAddress-block),block):
+    if ins.address in decoded:break
+    decoded[ins.address]=ins
+    if ins.mnemonic.startswith('j')and ins.operands and ins.operands[0].type==capstone.x86.X86_OP_IMM:
+     target=ins.operands[0].imm
+     if va<=target<base+fn.EndAddress:pending.append(target)
+    if ins.mnemonic in ['ret','jmp','int3']:break
+  instructions=[decoded[address]for address in sorted(decoded)]
+  if instructions:fn.EndAddress=max(i.address+i.size for i in instructions)-base
+ else:
+  decoded={}
+  for fragment in fragments:
+   for ins in md.disasm(pe.get_data(fragment.BeginAddress,fragment.EndAddress-fragment.BeginAddress),base+fragment.BeginAddress):decoded[ins.address]=ins
+  instructions=[decoded[address]for address in sorted(decoded)]
+ for ins in instructions:
   row={'address':hex(ins.address),'mnemonic':ins.mnemonic,'operands':ins.op_str}
   for op in ins.operands:
    if op.type==capstone.x86.X86_OP_MEM and op.mem.base==capstone.x86.X86_REG_RIP:
@@ -36,6 +54,6 @@ for address in a.address:
     st=blob.split(b'\0')[0]
     if len(st)>=4 and all(32<=x<127 for x in st):row['string']=st.decode()
   rows.append(row)
-  if leaf and ins.mnemonic in ['ret','jmp']:break
- result.append({'start':hex(base+fn.BeginAddress),'end':hex(base+fn.EndAddress),'instructions':rows})
+ ranges=[{'start':hex(base+f.BeginAddress),'end':hex(base+f.EndAddress)}for f in fragments]if not leaf else [{'start':hex(base+fn.BeginAddress),'end':hex(base+fn.EndAddress)}]
+ result.append({'start':hex(base+fn.BeginAddress),'end':hex(base+fn.EndAddress),'ranges':ranges,'leafControlFlowFallback':leaf,'instructions':rows})
 Path(a.out).write_text(json.dumps(result,indent=2));print([(f['start'],len(f['instructions']))for f in result])

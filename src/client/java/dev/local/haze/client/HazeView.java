@@ -36,9 +36,6 @@ public final class HazeView {
             }
         }
         if(m!=null) {
-            if(m.mode==Motion.Mode.ZIPLINE) {
-                side=Retail.number(d.camera.get("m_flCameraSideOffsetZiplining"));height+=Retail.number(d.camera.get("m_flCameraHeightOffsetZiplining"));
-            }
             if(m.airDashUsed) {
                 double elapsed=m.time-m.dashStart+partial*0.05;
                 JsonObject dash=d.ability("citadel_ability_dash").getAsJsonObject("m_cameraSequenceAirDashActivate");

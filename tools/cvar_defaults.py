@@ -17,7 +17,7 @@ for ref in refs:
     decoded=list(md.disasm(pe.get_data(start,end-start),base+start))
     val=None; evidence=None; integer=None; integer_evidence=None
     for ins in decoded:
-        if ins.address>base+target: break
+        if ins.mnemonic in ('xorps','pxor') and ins.op_str=='xmm2, xmm2':val=0.0;evidence=hex(ins.address)
         if ins.mnemonic=='movss' and ins.op_str.startswith('xmm2,') and len(ins.operands)>1:
             op=ins.operands[1]
             if op.type==capstone.x86.X86_OP_MEM and op.mem.base==capstone.x86.X86_REG_RIP:

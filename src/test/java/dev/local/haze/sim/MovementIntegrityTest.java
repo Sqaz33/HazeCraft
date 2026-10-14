@@ -56,6 +56,19 @@ class MovementIntegrityTest {
         m.step(DT,new Controls(Controls.JUMP,Controls.JUMP,0,0),air(position),0,-1,true);
         assertTrue(m.velocity.z()<-7);assertTrue(m.velocity.y()>13);assertEquals(3,m.stamina);assertFalse(m.grounded);
     }
+    @Test void repeatedWallJumpUsesNativeCostAfterTheFreeFirstJump(){
+        Motion m=new Motion(D);m.grounded=false;m.wall=true;m.wallNormal=new V3(0,0,-1);V3[] position={V3.ZERO};var collision=air(position);
+        m.step(DT,new Controls(Controls.JUMP,Controls.JUMP,0,0),collision,0,-1,true);assertEquals(3,m.stamina);assertEquals(1,m.wallJumps);
+        m.wall=true;m.step(DT,new Controls(Controls.JUMP,Controls.JUMP,0,0),collision,0,-1,true);assertEquals(2.5,m.stamina,1e-8);assertEquals(2,m.wallJumps);
+        m.stamina=.2;m.wall=true;m.step(DT,new Controls(Controls.JUMP,Controls.JUMP,0,0),collision,0,-1,true);assertEquals(2,m.wallJumps);
+    }
+    @Test void wallJumpFatigueUsesDecodedRemapAndRationalBias(){
+        assertEquals(.2/(3*.8+1),SourceMath.wallJumpPower(D,0),1e-7);
+        assertEquals(.6/(3*.4+1),SourceMath.wallJumpPower(D,.625),1e-7);
+        assertEquals(1,SourceMath.wallJumpPower(D,1.25));
+        assertEquals(1,SourceMath.wallJumpPower(D,100));
+        assertEquals(.2,SourceMath.bias(.5F,.2F),1e-7);
+    }
     @Test void blockedDashDoesNotTeleportThroughWall(){
         Motion m=new Motion(D);V3[] position={V3.ZERO};
         Motion.Collision wall=(delta,crouch)->{double dz=Math.min(delta.z(),2-position[0].z());V3 actual=new V3(delta.x(),0,dz);position[0]=position[0].add(actual);return new Motion.MoveResult(actual,true,dz<delta.z(),new V3(0,0,-1),0);};

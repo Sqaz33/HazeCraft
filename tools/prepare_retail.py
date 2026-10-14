@@ -21,6 +21,8 @@ names.update(('citadel_ability_zipline_boost','citadel_ability_melee_parry'))
 native=json.loads((LAB/'evidence/native-float-defaults.json').read_text())
 extra=LAB/'evidence/movement-crosshair-defaults.json'
 if extra.exists():native.update(json.loads(extra.read_text()))
+extra=LAB/'evidence/movement-cost-defaults.json'
+if extra.exists():native.update(json.loads(extra.read_text()))
 model_data=(LAB/'evidence/model-data.txt').read_text(encoding='utf8')
 start=model_data.index('<!-- kv3')
 model_kv=loads(model_data[start:])

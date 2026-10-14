@@ -95,3 +95,15 @@ User explicitly prioritizes movement and an undistorted Haze model during moveme
 - Jump, slide-start and mantle animation clocks now begin at the physical action start, instead of sampling the global match clock. The modern original zipline loop replaces the legacy clip. **`client-mantle-run.log` passes**, including the real two-block mantle scene and every preceding integration check.
 
 Still unfinished: full transition/inertial blend graph, IK/cloth/materials, native wall-jump bias/air acceleration/corner boosts/down-dash/slope behavior, rope and usable ziplines/boost provisioning, heavy melee phases, native camera/RNG/Fixation equivalence, full effects/audio and remaining HUD states. Preserve the user's requirement to resume these after movement integrity.
+
+
+## Update 2026-10-14 — no rope or zipline; native wall-jump recovery
+
+Latest explicit scope correction: no rope and no zipline in Minecraft. Removed both movement states, collision hooks, rope attachment logic, zipline registry, render/camera branches and unused zip boost input. The original extracted clip inventory remains a private source reference; it does not enable either mechanic. Earlier rope/zipline TODOs above are superseded.
+
+- Offline PE constructor extraction now handles zero defaults (`xorps`/`pxor`) and stores appearing after the name reference. Original cvars prove one free wall jump, zero initial cost and .5 stamina on later wall jumps. Extractor output is included in the private profile, not guessed constants.
+- Native wall-jump fatigue is clamped remap of elapsed time [0,1.25] to [.2,1], then rational Bias(.2). Replaced the earlier linear approximation. Evidence: `wall-jump-whole-functions.json`, `movement-cost-defaults.json` and native helpers 0x18025ae30 / 0x180292b60 / 0x1821e8ad0, in the external private lab.
+- Added offline Ghidra target helper; its output stays outside Git in the private lab. `native_fn.py` now groups chained unwind fragments and follows leaf conditional branches. Provisional target names are navigation labels, not proof of function identity.
+- `no-rope-build.log`: build passes after removal; **32 headless tests pass**. This check does not establish complete native movement parity.
+
+Continue movement/model priority: down-dash, corner behavior, proper crouch hull, movement transition graph and remaining native air/slide behavior. Then resume remaining HUD/abilities/camera work. No rope/zipline work remains in scope.

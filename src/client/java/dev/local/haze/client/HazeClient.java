@@ -120,7 +120,6 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
             double nz=Math.abs(diff.z-delta.z())>1e-7?-Math.signum(delta.z()):0;
             return new Motion.MoveResult(HazeActor.of(diff),p.onGround(),nx!=0||nz!=0,new V3(nx,0,nz).normalized(),0);
         }
-        @Override public boolean rope(){return p.onClimbable();}
         @Override public V3 mantle(V3 direction,double maxHeight) {
             if(direction.length()==0)return null;
             double step=Retail.DATA.model.get("m_flStepHeight").getAsDouble()*Retail.SOURCE_UNIT;
@@ -132,6 +131,5 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
                 if(hit.getType()!=HitResult.Type.MISS)return HazeActor.of(hit.getLocation().subtract(p.position()));
             }return null;
         }
-        @Override public V3 zipDirection(){return HazeZiplines.nearDirection(p);}
     }
 }
