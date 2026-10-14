@@ -6,6 +6,10 @@ import ghidra.program.model.address.*;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.data.FloatDataType;
+import ghidra.program.model.data.LongLongDataType;
+import ghidra.program.model.data.VoidDataType;
+import ghidra.program.model.data.BooleanDataType;
+import ghidra.program.model.data.IntegerDataType;
 import java.nio.file.*;
 import java.util.*;
 
@@ -30,7 +34,42 @@ public class HazeDecompileTargets extends GhidraScript {
             if(function==null)function=currentProgram.getFunctionManager().createFunction(parts[0],entry,body,SourceType.USER_DEFINED);
             else {function.setName(parts[0],SourceType.USER_DEFINED);function.setBody(body);}
             if(function==null)throw new IllegalStateException("Could not define "+parts[0]);
+            function.setNoReturn(false);
             if(parts.length>2){
+                if(parts[2].equals("stackprobe"))function.setCallFixup("alloca_probe");
+                if(Set.of("state","maxspeed","chargefraction","aircontrol").contains(parts[2])){
+                    String kind=parts[2];
+                    function.setCallingConvention("__fastcall");
+                    function.setReturnType(kind.equals("state")?BooleanDataType.dataType:FloatDataType.dataType,SourceType.USER_DEFINED);
+                    List<Parameter> parameters=new ArrayList<>();
+                    parameters.add(new ParameterImpl("self",LongLongDataType.dataType,currentProgram));
+                    if(kind.equals("state"))parameters.add(new ParameterImpl("stateIndex",IntegerDataType.dataType,currentProgram));
+                    if(kind.equals("maxspeed"))for(int i=0;i<3;i++)parameters.add(new ParameterImpl("flag"+i,BooleanDataType.dataType,currentProgram));
+                    if(kind.equals("chargefraction")){
+                        parameters.add(new ParameterImpl("panel",LongLongDataType.dataType,currentProgram));
+                        parameters.add(new ParameterImpl("index",IntegerDataType.dataType,currentProgram));
+                    }
+                    if(kind.equals("aircontrol"))parameters.add(new ParameterImpl("velocity",LongLongDataType.dataType,currentProgram));
+                    function.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,true,SourceType.USER_DEFINED,parameters.toArray(new Parameter[0]));
+                }
+                if(parts[2].equals("floatthis")||parts[2].equals("modelhandle")){
+                    function.setCallingConvention("__fastcall");
+                    function.setReturnType(parts[2].equals("floatthis")?FloatDataType.dataType:LongLongDataType.dataType,SourceType.USER_DEFINED);
+                    List<Parameter> parameters=new ArrayList<>();
+                    parameters.add(new ParameterImpl("selfOrOutput",LongLongDataType.dataType,currentProgram));
+                    if(parts[2].equals("modelhandle"))parameters.add(new ParameterImpl("pawn",LongLongDataType.dataType,currentProgram));
+                    function.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,true,SourceType.USER_DEFINED,parameters.toArray(new Parameter[0]));
+                }
+
+                if(parts[2].equals("returnsfloat"))function.setReturnType(FloatDataType.dataType,SourceType.USER_DEFINED);
+                if(parts[2].equals("motion")||parts[2].equals("motionbool")){
+                    function.setCallingConvention("__fastcall");
+                    function.setReturnType(parts[2].equals("motionbool")?BooleanDataType.dataType:VoidDataType.dataType,SourceType.USER_DEFINED);
+                    function.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,true,SourceType.USER_DEFINED,
+                        new ParameterImpl("movement",LongLongDataType.dataType,currentProgram),
+                        new ParameterImpl("moveData",LongLongDataType.dataType,currentProgram),
+                        new ParameterImpl("dt",FloatDataType.dataType,currentProgram));
+                }
                 int count=parts[2].equals("bias")?2:parts[2].equals("remap")?5:0;
                 if(count>0){
                     Parameter[] parameters=new Parameter[count];for(int i=0;i<count;i++)parameters[i]=new ParameterImpl("value"+i,FloatDataType.dataType,currentProgram);

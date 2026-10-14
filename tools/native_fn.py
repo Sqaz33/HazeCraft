@@ -13,7 +13,10 @@ for entry in pe.DIRECTORY_ENTRY_EXCEPTION:
  root=primary(entry);groups.setdefault(root,[]).append(entry.struct)
 md=capstone.Cs(capstone.CS_ARCH_X86,capstone.CS_MODE_64);md.detail=True;result=[]
 for address in a.address:
- va=int(address,16);entry=next((f for f in pe.DIRECTORY_ENTRY_EXCEPTION if base+f.struct.BeginAddress<=va<base+f.struct.EndAddress),None)
+ va=int(address,16)
+ if not any(s.Characteristics&0x20000000 and base+s.VirtualAddress<=va<base+s.VirtualAddress+s.Misc_VirtualSize for s in pe.sections):
+  raise ValueError('Not an executable image address: '+address+' (quote hexadecimal addresses in PowerShell)')
+ entry=next((f for f in pe.DIRECTORY_ENTRY_EXCEPTION if base+f.struct.BeginAddress<=va<base+f.struct.EndAddress),None)
  fn=entry.struct if entry else None
  leaf=fn is None
  if leaf:

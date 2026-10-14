@@ -1,0 +1,102 @@
+"""Export character-independent research profiles from a pinned, owned reference.
+
+These files are research inputs, not a declaration that the runtime port is complete.
+Every added default has a schema field and a constructor store in the pinned client.
+"""
+import argparse
+import copy
+import hashlib
+import json
+from pathlib import Path
+import re
+import struct
+
+from kv3 import loads
+
+p = argparse.ArgumentParser()
+p.add_argument('--reference', default='D:/DeadlockHazeLab/reference/25939744')
+p.add_argument('--evidence', default='D:/DeadlockHazeLab/evidence')
+p.add_argument('--out', default='D:/DeadlockHazeLab/research/25939744/movement')
+a = p.parse_args()
+reference, evidence, output = Path(a.reference), Path(a.evidence), Path(a.out)
+assert not output.resolve().is_relative_to(Path(__file__).resolve().parents[1])
+source = json.loads((reference / 'source.json').read_text())
+assert source['build'] == '25939744', 'Schema addresses must be reverified for another build'
+assert hashlib.sha256((reference / 'client.dll').read_bytes()).hexdigest() == source['clientSha256']
+for name, digest in source['dataHashes'].items():
+    assert hashlib.sha256((reference / name).read_bytes()).hexdigest() == digest, name
+constructors = json.loads((evidence / '25939744-movement-constructors.json').read_text())
+functions = json.loads((evidence / '25939744-movement-functions.json').read_text())
+assert all(f['sourceSha256'] == source['clientSha256'] for f in constructors + functions)
+instructions = {i['address']: (f, i) for f in constructors for i in f['instructions']}
+jump_schema = next(f for f in functions if f['start'] == '0x180276180')['instructions']
+
+def schema_offset(name):
+    index = next(i for i, row in enumerate(jump_schema) if row.get('string') == name)
+    for row in jump_schema[index + 1:index + 9]:
+        found = re.fullmatch(r'r[89], \[rdi \+ (0x[0-9a-f]+)\]', row['operands'])
+        if row['mnemonic'] == 'lea' and found:
+            return int(found[1], 16)
+    raise AssertionError('Missing schema offset: ' + name)
+
+defaults = {}
+def literal_float(ability, field, address, offset, schema=True):
+    function, row = instructions[address]
+    match = re.fullmatch(r'(?:dword|qword) ptr \[rbx \+ (0x[0-9a-f]+)\], (0x[0-9a-f]+)', row['operands'])
+    assert row['mnemonic'] == 'mov' and match and int(match[1], 16) == offset, row
+    if schema:
+        assert schema_offset(field) == offset
+    bits = int(match[2], 16) & 0xffffffff
+    value = struct.unpack('<f', struct.pack('<I', bits))[0]
+    defaults.setdefault(ability, {})[field] = {
+        'value': value, 'offset': hex(offset), 'store': address,
+        'constructor': function['start'], 'clientSha256': source['clientSha256'],
+    }
+
+for field, address, offset in [
+    ('m_flMaxSpeedDelta', '0x18023a4f3', 0x16d4),
+    ('m_flDashJumpMantleDisableTime', '0x18023a508', 0x1700),
+    ('m_flDashJumpExtraAirControlTime', '0x18023a512', 0x1704),
+    ('m_flDashJumpExtraAirControlPercent', '0x18023a51c', 0x1708),
+    ('m_flSlowedSlideJumpFactor', '0x18023a5b2', 0x17a8),
+]:
+    literal_float('citadel_ability_jump', field, address, offset)
+literal_float('citadel_ability_dash', 'm_flDownwardAirDashSpeed', '0x180239ffb', 0x182c, False)
+literal_float('citadel_ability_sprint', 'm_flSprintAccMS', '0x18023aa15', 0x14d8, False)
+heroes = loads((reference / 'scripts/heroes.vdata').read_text(encoding='utf-8'))
+abilities = loads((reference / 'scripts/abilities.vdata').read_text(encoding='utf-8'))
+roles = {
+    'jump': 'ESlot_Ability_Jump', 'dash': 'ESlot_Ability_Innate_1',
+    'slide': 'ESlot_Ability_Slide', 'sprint': 'ESlot_Ability_Innate_2',
+    'mantle': 'ESlot_Ability_Mantle', 'parry': 'ESlot_Ability_Innate_3',
+    'melee': 'ESlot_Weapon_Melee',
+}
+all_abilities = {}
+profiles = {}
+for name, hero in heroes.items():
+    if not isinstance(hero, dict) or not name.startswith('hero_') or 'm_mapStartingStats' not in hero:
+        continue
+    bindings = hero.get('m_mapBoundAbilities', {})
+    selected = {role: bindings[slot] for role, slot in roles.items() if slot in bindings}
+    for ability in selected.values():
+        if ability not in abilities:
+            continue
+        if ability not in all_abilities:
+            record = copy.deepcopy(abilities[ability])
+            for field, proof in defaults.get(ability, {}).items():
+                record.setdefault(field, proof['value'])
+            all_abilities[ability] = record
+    profiles[name] = {
+        'sourceHero': name, 'sourceBuild': source['build'],
+        'startingStats': hero['m_mapStartingStats'], 'movementBindings': selected,
+        'groundDashPositionCurve': hero.get('m_groundDashPositionCurve'),
+        'unresolvedBindings': [v for v in selected.values() if v not in abilities],
+    }
+assert 'hero_haze' in profiles and not profiles['hero_haze']['unresolvedBindings']
+output.mkdir(parents=True, exist_ok=True)
+(output / 'profiles.json').write_text(json.dumps(profiles, indent=2), encoding='utf-8')
+(output / 'shared-definitions.json').write_text(json.dumps(all_abilities, indent=2), encoding='utf-8')
+(output / 'native-defaults.json').write_text(json.dumps(defaults, indent=2), encoding='utf-8')
+(output / 'provenance.json').write_text(json.dumps(source, indent=2), encoding='utf-8')
+print(json.dumps({'characters': len(profiles), 'completeProfiles': sum(not p['unresolvedBindings'] for p in profiles.values()), 'boundDefinitions': len(all_abilities),
+                  'verifiedDefaults': sum(map(len, defaults.values())), 'out': str(output)}))
