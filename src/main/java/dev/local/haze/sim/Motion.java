@@ -17,6 +17,7 @@ public final class Motion {
     private final CharacterMovementProfile profile;
     private final Map<String,Double> nativeValues;
     private final double shootScale,zoomScale;
+    private final double staminaRegenMultiplier;
     private final JsonObject dashCurve;
     private static final double UNIT=0.0254;
     public V3 velocity=V3.ZERO;
@@ -34,10 +35,16 @@ public final class Motion {
     private final List<Double> regenPenalties=new ArrayList<>();
     private double slope;
     private boolean combatThisStep;
-    public Motion(Retail data) { this(data.movementProfile(),data.movementDefaults(),
-        Retail.number(data.weapon().get("m_flShootMoveSpeedPercent")),Retail.number(data.weapon().get("m_flZoomMoveSpeedPercent"))); }
+    public Motion(Retail data) { this(data,1); }
+    public Motion(Retail data,double staminaRegenMultiplier) { this(data.movementProfile(),data.movementDefaults(),
+        Retail.number(data.weapon().get("m_flShootMoveSpeedPercent")),Retail.number(data.weapon().get("m_flZoomMoveSpeedPercent")),staminaRegenMultiplier); }
     public Motion(CharacterMovementProfile profile,Map<String,Double> nativeValues,double shootScale,double zoomScale) {
+        this(profile,nativeValues,shootScale,zoomScale,1);
+    }
+    public Motion(CharacterMovementProfile profile,Map<String,Double> nativeValues,double shootScale,double zoomScale,double staminaRegenMultiplier) {
+        if(!Double.isFinite(staminaRegenMultiplier)||staminaRegenMultiplier<0)throw new IllegalArgumentException("Stamina regeneration multiplier");
         this.profile=profile;this.nativeValues=Map.copyOf(nativeValues);this.shootScale=shootScale;this.zoomScale=zoomScale;
+        this.staminaRegenMultiplier=staminaRegenMultiplier;
         dashCurve=profile.groundDashCurve().getAsJsonObject();stamina=profile.stat("EStamina");
     }
     private double f(CharacterMovementProfile.Role role,String key) { return profile.field(role,key); }
@@ -53,7 +60,7 @@ public final class Motion {
         regenPenalties.removeIf(end->time>=end);
         PercentageStack regen=new PercentageStack();
         for(double ignored:regenPenalties)regen.add((float)p(JUMP,"StaminaRegenReduction"));
-        stamina=Math.min(maxStamina(),stamina+profile.stat("EStaminaRegenPerSecond")*regen.multiplier()*dt);
+        stamina=Math.min(maxStamina(),stamina+profile.stat("EStaminaRegenPerSecond")*staminaRegenMultiplier*regen.multiplier()*dt);
         if(grounded) { lastGroundTime=time;airJumpUsed=false;airDashUsed=false;downDashUsed=false;wallJumps=0; }
         V3 contact=world.wallContact();
         if(contact.length()>0) { wall=true;wallNormal=contact.normalized(); }
@@ -115,11 +122,16 @@ public final class Motion {
                     fraction=Curve.sample(curve,t1)-Curve.sample(curve,t0);
                 } else fraction=t1-t0;
                 V3 displacement=dashDirection.mul(dashDistance*fraction);
-                velocity=displacement.mul(1/dt).withY(mode==Mode.DASH_AIR?0:velocity.y());
+                // The final dash fragment covers less time than this simulation step.
+                // Its displacement must not become an artificially tiny exit velocity.
+                double activeTime=(t1-t0)*dashDuration;
+                V3 dashVelocity=activeTime>1e-9?displacement.mul(1/activeTime):velocity.flat();
+                velocity=dashVelocity.withY(mode==Mode.DASH_AIR?0:velocity.y());
                 if(mode==Mode.DASH_GROUND)gravity(dt);
                 collide(world,displacement.add(new V3(0,velocity.y()*dt,0)),false,dt);return;
             } else {
-                if(mode==Mode.DASH_AIR) velocity=velocity.mul(f(DASH,"m_flAirDashEndVelocityScale"));
+                // Keep momentum on release. The source end-scale belongs to the
+                // unfinished dash speed callback, not a second exit impulse.
                 mode=grounded?Mode.RUN:Mode.AIR;dash=false;
             }
         }

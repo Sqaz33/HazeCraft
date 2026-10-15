@@ -193,3 +193,29 @@ complete air-dash callback execution, wall corners/lateral movement ownership,
 full slide/getup/session penalties and slopes, exact fractional input timings,
 qualified busy-action queue and native mantle probes. UI radial drawing and host
 collision remain adaptations. No upload or public remote was used.
+
+
+## 2026-10-15 — 0.2.1 dash exit fix and requested fast stamina
+
+User scope: fix stopping in mid-air after dash and enable fast stamina regen only.
+Root cause: final partial dash displacement was divided by the whole substep,
+turning a clipped movement fragment into a nearly zero exit speed; air exit then
+multiplied that already reduced velocity by .2 again. Divide the displacement by
+its active dash time, retaining prior velocity for numerically empty fragments,
+and remove the extra air-exit impulse. Ordinary gravity/drag resume on release.
+This is a focused preview correction, not completion of the native dash callback.
+
+Add an explicit regeneration multiplier to Motion, default 1 for source-profile
+simulation. The player client selects 10 as requested: .45s per charge / 1.35s for
+three charges before penalties. Source exports, costs, maximum stamina, combat
+penalties, model, animations and other movement rules remain unchanged.
+
+Added four regressions covering final dash fragments at 64Hz/120Hz/50ms/small
+intervals, the actual host clock partition, a ground dash leaving a ledge, resumed
+gravity, retained coast speed and fast regeneration with maximum clamping.
+
+Validation: full build passes all 56 software tests, including four new dash/regen
+regressions. Package CRC check passes; exported game data and assets were not
+edited. No new game launch was performed for this numeric fix. Log: private
+evidence/25939744-dash-fix-build.log. Delivered one 0.2.1 JAR. The old preview
+was no longer in dist, so a binary asset comparison against it was unavailable.

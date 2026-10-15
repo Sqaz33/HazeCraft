@@ -55,7 +55,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
                 if(state.active!=active) {
                     active=state.active;
                     if(active) {
-                        motion=new Motion(Retail.DATA);movementClock=new MovementClock();clearInput();HazeView.reset();previousCamera=mc.options.getCameraType();mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+                        motion=new Motion(Retail.DATA,10);movementClock=new MovementClock();clearInput();HazeView.reset();previousCamera=mc.options.getCameraType();mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
                     } else {
                         if(previousCamera!=null)mc.options.setCameraType(previousCamera);motion=null;clearInput();
                         if(mc.screen instanceof UpgradeScreen)mc.setScreen(null);
