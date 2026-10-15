@@ -402,17 +402,20 @@ prepared by 0x18085fcf0; preserve that separation in the replacement.
 
 0x18085c280 integrates a damped support spring with frequency 10Hz and damping 1,
 omega=2*pi*f. Above squared speed 160000 Source units²/s² damping changes to .25.
-It uses the prior support normal/height and a separate spring velocity; this is
+It uses the prior support point and a separate spring velocity; this is
 not a hard snap of the player's feet onto a floor. Original model capsule uses
 step 32, radius 20 and top 80 for Haze, with lower center step+radius and upper
 center max(top, lower); duck/tuck modify these centers. Earlier 32x72 AABB notes
 describe an incomplete host adaptation, not the actual movement capsule.
 
 Default collision 0x180881480 performs up to 16 outer iterations and projects
-penetration/contact constraints. At its final velocity correction, it removes
-inward plane components from normalized velocity, then renormalizes and restores
-the original speed magnitude unless another event overrides it. Zeroing blocked
-Minecraft axes loses this behavior. Capsule sweeps, support classification,
+penetration/contact constraints. At its final velocity correction, it normalizes
+the candidate velocity, removes inward plane components, then multiplies by the
+original move-data speed unless another event overrides it. There is **no second
+normalization after plane projection**: tangential speed is retained, not boosted
+to the original full speed. An earlier journal interpretation claiming a second
+normalization was incorrect. A blocked-axis adapter cannot represent oblique or
+multiple capsule contact normals. Capsule sweeps, support classification,
 ceiling response and host collision ownership remain implementation work.
 
 ### Parry cancellation during a dash
@@ -425,8 +428,11 @@ modifier for .4s. Friction callback 0x180256960 supplies -90 until that expiry.
 On an air dash, it ends the dash and caps only horizontal speed to air-dash
 distance / duration * .4; a slower current horizontal speed is preserved, as is
 vertical velocity. It records the cancel time and retains the modifier for the
-greater of post-dash drag duration and .4s. The .3 parry-air-gravity VData field
-still needs its consuming callback verified; do not apply it by name alone.
+greater of post-dash drag duration and .4s. Gravity-value callback 0x180259870
+uses this recorded time: while the glide duration is positive and elapsed time
+is strictly below it, clamped remap interpolates the .3 initial gravity scale
+back to 1 over .4s. It returns a present modifier value (type 2) during that
+window and an absent value afterward; cancel time zero means inactive.
 
 ### Evidence and limitations
 
@@ -437,3 +443,80 @@ fold cases. Together with the earlier 198 math and 396 mantle cases there are
 evidence/25939744-state-regression-test.log. These are helper-level checks; the
 replacement movement engine, Minecraft adapter and gameplay parity are unfinished.
 No game was launched, no old replay was used, and no new JAR was delivered.
+
+The separate support/parry oracle now executes 0x18085c280 and 0x180259870 with
+original time/remap helpers: 144 support cases and 120 gravity-lifetime cases.
+Its only injected dependency is a boolean ground-entity getter with a RET
+trampoline; no collision or movement calculation is mocked. SupportSpring and
+DashParryGravity match all 264 cases (25939744-support-parity-test.log). In the
+support routine, +0x2cc is the cached support point, not the ground normal:
+0x18085f920 copies trace +0x84/+0x8c to its result, 0x18087fbe0 stores it, and
+0x18085c280 subtracts its vertical component from origin height. The zero vector
+is the no-support sentinel. The spring clears when support is absent/disabled,
+or when no ground entity exists unless movement mode 2 is falling.
+
+The failed-jump timestamp +0x173c is presentation/error feedback, not an input
+buffer. 0x180289c60 delays errors 0x24/0x28 outside the dash state; 0x18028d3c0
+releases the cue on button release and suppresses it after a short hold. Do not
+invent buffering from that field. Successful mantle/dash cast events clear it
+and separately apply the original refund rules (0x180288810).
+
+All 38 software tests pass after support/parry additions
+(`25939744-support-regression-test.log`); 983 original-code cases are available.
+These remain isolated numerical/state checks, not full controller verification.
+
+### Command-history parity and action selection
+
+DoublePressTracker now reproduces the arithmetic/state loop at 0x1817b71b8..
+0x1817b725b in the containing command-preparation function. A separate oracle
+enters that verified block with explicit register/stack inputs and runs the
+original button predicates; it does not emulate the surrounding profiler,
+input preparation or presentation code. 864 cases cover six button bits,
+all eight bit-plane states, 64/128Hz, strict window boundaries and unsigned
+command-number wrap. The helper matches all of them.
+
+The central action handler is 0x18087dd80. It iterates slots in ascending order,
+uses per-ability activation modes and a consumed-button mask, and gives mantle
+slot 10 a separate held/automatic-probe path. 0x1808af640 maps slots to a native
+24-byte table at 0x183280ee0: jump 9 uses bit 56, mantle 10 uses bit 48; both
+refer to +in_mantle. Dash 17 uses bit 44, crouch 13 bit 2, melee 22 bit 32,
+and held ability/parry 19 bit 42. The different bits must remain distinct even
+when the same physical key drives their command. Do not replace this with one
+Minecraft boolean called jump or interpret slot 11's excluded zipline as enabled.
+
+Failed-action queue predicate 0x180502ca0 first limits eligibility by ability
+type (1/2), virtual +0x700 or slot-mask 0x7a1000. Current schema identifies VData
++0x28 as m_eAbilityType; native enum identifies Innate=4. Jump's +0x700 returns
+false at 0x180273c80, and slot 9 is absent from the queue mask. Thus generic
+citadel_ability_busy_queue_time=.25 (constructor 0x1800af810) is **not a general
+quarter-second jump buffer**. Slots 12/17/19/20/21/22 are in that mask, with
+further failure-code and timing conditions in the predicate. The handler stores
+pending button/expiry/error at pawn +0x17f0/+0x17f8/+0x17fc, retries eligible
+instant actions while the strict expiry comparison succeeds, and releases the
+deferred error after expiry. This differs from the jump presentation timestamp.
+
+Automatic mantle 0x18029e0c0 tracks repeated pushes at +0x170c/+0x1710 and prior
+position +0x1714. Samples must stay within 1.5 native intervals; advance along
+the ledge-facing horizontal vector must not exceed interval * 60 Source units/s.
+After .06s of this blocked push, the automatic path may activate. Main handler
+also checks source controller preferences, forward/backward input, clearance,
+probe flags and existing movement binding before calling it. Held-key mantle is
+a separate path. Default mantle cancellation cvar is false; do not enable the
+optional opposite-direction cancel by default.
+
+### Reusable character selection
+
+CharacterMovementProfile resolves stats, ground-dash curve and seven movement
+roles from the exported character binding record. It contains no Haze ID,
+Minecraft type or global Retail dependency. A source-data regression loads all
+67 complete current profiles, verifies distinct character speeds and melee
+bindings, and rejects the explicitly unresolved test profile and missing numeric
+fields. This is an input-data boundary for the new controller, not a replacement
+controller by itself. Physical capsule/model parameters remain a separate input.
+
+Corrected schema extraction to reject RIP-relative callback/metadata addresses
+as instance offsets, accept decimal offsets and verify every name reference
+against selected DLL bytes. The refreshed current movement catalogue has 168
+explicit member-pointer registrations, replacing the earlier 169-record result.
+
+Full regression: all 40 software tests pass; 1847 original-code helper/block cases are available (`25939744-command-profile-regression-test.log`). The gameplay controller is still the old baseline; investigation and integration continue.
