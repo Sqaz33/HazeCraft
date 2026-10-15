@@ -7,18 +7,23 @@ import java.util.Arrays;
 public final class MovementKeys {
     private final ButtonState buttons=new ButtonState();
     private final DoublePressTracker doubles;
+    private int jumpPresses;
     public MovementKeys() {
         int[] initial=new int[64];Arrays.fill(initial,Integer.MIN_VALUE);
         doubles=new DoublePressTracker(initial);
     }
-    public void event(int bit,boolean down) { buttons.event(Integer.toUnsignedLong(bit),down); }
+    public void event(int bit,boolean down) {
+        if(bit==Controls.JUMP&&down&&(buttons.held()&Controls.JUMP)==0)jumpPresses=Math.min(2,jumpPresses+1);
+        buttons.event(Integer.toUnsignedLong(bit),down);
+    }
     public Controls sample(int held,float yaw,float pitch,int command) {
         long difference=buttons.held()^Integer.toUnsignedLong(held);
         for(int bit=0;bit<16;bit++)if((difference&(1L<<bit))!=0)event(1<<bit,(held&(1<<bit))!=0);
         int pressed=(int)buttons.pressed();
         long doublePress=doubles.update(command,buttons,.22f,(float)MovementClock.INTERVAL);
         if((doublePress&Controls.CROUCH)!=0)pressed|=Controls.DOWN_DASH;
+        int jumps=Math.max(jumpPresses,(pressed&Controls.JUMP)!=0?1:0);jumpPresses=0;
         buttons.beginCommand();
-        return new Controls(held,pressed,yaw,pitch);
+        return new Controls(held,pressed,yaw,pitch,jumps);
     }
 }

@@ -54,9 +54,14 @@ public final class HazeActor {
     public void accept(HazeProtocol.Input packet,ServerPlayer p) {
         if(packet.sequence()<=lastSequence || !Float.isFinite(packet.yaw()) || !Float.isFinite(packet.pitch())) return;
         lastSequence=packet.sequence();inputAge=0;
+        if(packet.command()==HazeProtocol.SLIDE_STATE_COMMAND) {
+            if(active)input=new Controls((input.held()&~Controls.SLIDING)|(packet.held()&Controls.SLIDING),
+                input.pressed(),input.yaw(),input.pitch());
+            return;
+        }
         if(packet.command()==1) toggle(p);
         if(active && packet.command()>=10 && packet.command()<14) abilities.upgrade(packet.command()-10);
-        input=new Controls(packet.held()&0x1ffff,packet.pressed()&0x1ffff,packet.yaw(),Math.max(-89,Math.min(89,packet.pitch())));
+        input=new Controls(packet.held()&0x3ffff,packet.pressed()&0x1ffff,packet.yaw(),Math.max(-89,Math.min(89,packet.pitch())));
     }
     public void tick(ServerPlayer p) {
         if(!active) return;
@@ -93,7 +98,7 @@ public final class HazeActor {
             double bonus=flurry?abilities.p(3,"WeaponDamageBonus"):0;
             if(input.edge(Controls.RELOAD)) { gun.reload(0);setAction("reload"); }
             boolean fire=input.down(Controls.FIRE) && abilities.daggerAt<0 && meleeHeld<=0 && abilities.time>=parryUntil;
-            boolean slide=p.getPose()==Pose.SWIMMING || p.getPose()==Pose.CROUCHING && p.getDeltaMovement().horizontalDistance()>0.4;
+            boolean slide=input.down(Controls.SLIDING)&&input.down(Controls.CROUCH);
             for(Gun.Shot shot:gun.advance(dt/6,fire||flurry,input.down(Controls.AIM),flurry,slide,rate,bonus,0)) {
                 if(gun.shotCount%2==0)lastLeftShot=abilities.time;else lastRightShot=abilities.time;
                 if(fire) abilities.breakSmoke();

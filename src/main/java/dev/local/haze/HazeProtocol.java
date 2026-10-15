@@ -7,6 +7,7 @@ import net.minecraft.resources.Identifier;
 
 public final class HazeProtocol {
     public static final int VERSION=1;
+    public static final int SLIDE_STATE_COMMAND=20;
     public record Input(int sequence,int held,int pressed,float yaw,float pitch,int command) implements CustomPacketPayload {
         public static final Type<Input> TYPE=new Type<>(Identifier.fromNamespaceAndPath("haze","input_v1"));
         public static final StreamCodec<RegistryFriendlyByteBuf,Input> CODEC=StreamCodec.of((b,p)->{

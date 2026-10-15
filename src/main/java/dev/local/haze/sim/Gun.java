@@ -29,6 +29,7 @@ public final class Gun {
         List<Shot> shots=new ArrayList<>();
         bloom=Math.max(0,bloom-f("m_flShootSpreadPenaltyDecay")*dt);
         recoil=Math.max(0,recoil-f("m_flRecoilRecoverySpeed")*dt);
+        if(sliding)reloadRemaining=0;
         if (reloadRemaining>0) {
             reloadRemaining=Math.max(0,reloadRemaining-dt);
             if (reloadRemaining==0) ammo=clipSize(spirit);

@@ -35,6 +35,19 @@ public final class HazeGameTest implements FabricClientGameTest {
             require(context.computeOnClient(mc->HazeRenderer.renderedFrames>0),"Haze geometry never rendered");
             context.takeScreenshot("haze-01-idle");report.addProperty("idleRendered",true);
             context.runOnClient(mc->{
+                try {
+                    var field=HazeClient.class.getDeclaredField("movementKeys");field.setAccessible(true);
+                    var keys=(dev.local.haze.sim.movement.MovementKeys)field.get(null);
+                    keys.event(Controls.JUMP,true);keys.event(Controls.JUMP,false);
+                    keys.event(Controls.JUMP,true);keys.event(Controls.JUMP,false);
+                } catch(ReflectiveOperationException e){throw new RuntimeException(e);}
+            });
+            context.waitTicks(1);
+            require(context.computeOnClient(mc->HazeClient.motion.airJumpUsed&&HazeClient.motion.velocity.y()>4),"Rapid double tap was lost in actual host travel");
+            report.addProperty("rapidDoubleJump",true);
+            context.waitFor(mc->HazeClient.motion.grounded&&mc.player.onGround(),100);
+
+            context.runOnClient(mc->{
                 var mouse=(dev.local.haze.client.mixin.MouseAccessor)mc.mouseHandler;
                 float before=mc.player.getYRot();mouse.haze$dx(100);mouse.haze$dy(0);mouse.haze$turn(1.0/60);mouse.haze$dx(0);
                 double expected=Retail.number(Retail.DATA.root.getAsJsonObject("localInputSettings").get("sensitivity"))*Retail.number(Retail.DATA.root.getAsJsonObject("localInputSettings").get("m_yaw"))*100;
@@ -71,12 +84,27 @@ public final class HazeGameTest implements FabricClientGameTest {
             server.runOnServer(s->{var p=s.getPlayerList().getPlayers().getFirst();HazeMod.ACTORS.get(p.getUUID()).abilities.readyAt[0]=0;});
             context.runOnClient(mc->HazeLab.held=Controls.JUMP|Controls.DAGGER);context.waitTicks(1);context.runOnClient(mc->HazeLab.held=0);context.waitTicks(3);
             require(context.computeOnClient(mc->!mc.player.onGround()),"Jump failed");context.takeScreenshot("haze-08-jump");report.addProperty("jump",true);
+            context.runOnClient(mc->HazeLab.held=Controls.JUMP);context.waitTicks(1);
+            require(context.computeOnClient(mc->HazeClient.motion.airJumpUsed&&HazeClient.motion.velocity.y()>4),"Delayed double jump failed");
+            report.addProperty("delayedDoubleJump",true);context.runOnClient(mc->HazeLab.held=0);
+
             context.waitTicks(22);context.waitFor(mc->HazeClient.motion.grounded&&mc.player.onGround(),100);context.runOnClient(mc->HazeClient.motion.stamina=3);
             context.runOnClient(mc->HazeLab.held=Controls.FORWARD|Controls.DASH);context.waitTicks(1);
             context.runOnClient(mc->HazeLab.held=Controls.FORWARD|Controls.CROUCH);context.waitTicks(7);
             context.takeScreenshot("haze-slide-mid");
             String slideState=context.computeOnClient(mc->"mode="+HazeClient.motion.mode+" grounded="+HazeClient.motion.grounded+" velocity="+HazeClient.motion.velocity+" elapsed="+(HazeClient.motion.time-HazeClient.motion.dashStart)+" controls="+HazeClient.controls+" position="+mc.player.position());
             require(context.computeOnClient(mc->HazeClient.motion.mode==Motion.Mode.SLIDE),"Dash did not enter slide: "+slideState);report.addProperty("dashSlide",true);
+            long slideShots=server.computeOnServer(s->{
+                var actor=HazeMod.ACTORS.get(s.getPlayerList().getPlayers().getFirst().getUUID());
+                actor.gun.ammo=0;actor.gun.reloadRemaining=2;return actor.gun.shotCount;
+            });
+            context.runOnClient(mc->HazeLab.held=Controls.CROUCH|Controls.FIRE);context.waitTicks(10);
+            require(server.computeOnServer(s->{
+                var actor=HazeMod.ACTORS.get(s.getPlayerList().getPlayers().getFirst().getUUID());
+                return actor.gun.shotCount>slideShots&&actor.gun.ammo==0&&actor.gun.reloadRemaining==0;
+            }),"Slide fire from empty magazine failed on server");
+            report.addProperty("slideInfiniteAmmo",true);context.takeScreenshot("haze-slide-infinite-ammo");
+
             context.runOnClient(mc->HazeLab.held=0);context.waitTicks(20);
             server.runCommand("fill -1 64 2 -1 66 8 stone");server.runCommand("fill 1 64 2 1 66 8 stone");server.runCommand("fill 0 66 2 0 66 8 stone");
             server.runCommand("tp @p 0.5 64 0.5 0 0");context.waitTicks(3);

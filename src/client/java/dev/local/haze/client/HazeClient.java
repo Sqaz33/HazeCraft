@@ -31,7 +31,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     private static CameraType previousCamera;
     private static MovementClock movementClock=new MovementClock();
     private static MovementKeys movementKeys=new MovementKeys();
-    private static void clearInput() { controls=Controls.NONE;previous=0;movementKeys=new MovementKeys(); }
+    private static void clearInput() { controls=Controls.NONE;previous=0;movementKeys=new MovementKeys();movementClock.clearInputs(); }
     public static void keyboard(int key,int action) {
         Minecraft mc=Minecraft.getInstance();
         if(!active||!mc.isWindowActive()||mc.screen!=null||action==GLFW.GLFW_REPEAT)return;
@@ -111,7 +111,12 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         HazeLab.tick(mc);
     }
     public static void send(int command) {
-        if(ClientPlayNetworking.canSend(HazeProtocol.Input.TYPE)) ClientPlayNetworking.send(new HazeProtocol.Input(sequence++,controls.held(),controls.pressed(),controls.yaw(),controls.pitch(),command));
+        send(command,controls.pressed());
+    }
+    private static void send(int command,int pressed) {
+        int held=controls.held();
+        if(motion!=null&&motion.mode==Motion.Mode.SLIDE&&controls.down(Controls.CROUCH))held|=Controls.SLIDING;
+        if(ClientPlayNetworking.canSend(HazeProtocol.Input.TYPE)) ClientPlayNetworking.send(new HazeProtocol.Input(sequence++,held,pressed,controls.yaw(),controls.pitch(),command));
     }
     @Override public boolean active(Player p) { return HazeClient.active(p.getUUID()); }
     @Override public boolean travel(Player player) {
@@ -122,6 +127,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         Motion.Collision collision=new PlayerCollision(p);
         Motion.Mode before=motion.mode;
         movementClock.advance(.05,controls,(dt,input)->motion.step(dt,input,collision,bonus,cap,state!=null&&state.inCombat));
+        if((before==Motion.Mode.SLIDE)!=(motion.mode==Motion.Mode.SLIDE))send(HazeProtocol.SLIDE_STATE_COMMAND,0);
         HazeSounds.movement(before,motion,controls,p);
         p.setDeltaMovement(HazeActor.mc(motion.velocity.mul(0.05)));p.fallDistance=0;p.setSprinting(false);
         return true;

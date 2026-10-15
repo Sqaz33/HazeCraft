@@ -219,3 +219,36 @@ regressions. Package CRC check passes; exported game data and assets were not
 edited. No new game launch was performed for this numeric fix. Log: private
 evidence/25939744-dash-fix-build.log. Delivered one 0.2.1 JAR. The old preview
 was no longer in dist, so a binary asset comparison against it was unavailable.
+
+
+## 2026-10-15 — 0.2.2 rapid double jump and infinite slide ammo
+
+User requested a quick double-jump fix, then added infinite ammo in slide.
+The host input adapter collapsed two Space down transitions in one 50ms frame
+into one pressed bit. Preserve up to two distinct jump presses in Controls and
+MovementKeys, and dispatch them on separate MovementClock steps. Holding or
+repeated duplicate down events does not add another jump. Pending jumps clear
+when the host releases input on focus/screen/mode/world transitions. Jump
+impulse, stamina costs and the one-air-jump limit remain unchanged.
+
+Slide ammo logic already existed in Gun, but the server inferred slide from
+Minecraft pose/velocity, which does not describe the client movement reliably.
+Send actual slide state in a held flag and immediately update its transitions
+with a dedicated state-only command. This preserves pending ability edges
+rather than replacing or replaying them. Server gun simulation uses that flag
+plus crouch, bypasses ammo spending and cancels reload during slide, allowing
+fire from zero ammo. Exiting slide restores normal magazine/reload behavior.
+HUD displays infinity during slide. Fast regen and the dash exit fix remain.
+
+Added six regressions: rapid released/held double taps within one host frame,
+second jump at multiple flight times, hold/duplicate-event rejection, short-frame
+pending input, empty-magazine/reload slide firing, and normal ammo use after slide.
+Extended the real-client scenario with rapid and delayed double jumps and
+server-side firing from an empty, reloading magazine during slide.
+
+Validation: full build passes all 62 software tests. Final real-client run passes
+rapid and delayed double jumps, server-side slide fire from zero ammo with reload
+active, existing model/knife locomotion, dash/slide, mantle, abilities and Steve
+toggle. Inspected the slide screenshot with the infinity HUD indicator. Logs:
+private evidence/25939744-jump-slide-fix-build.log and -client.log. Final one-JAR
+package CRC validation passes. No public upload or full movement-model work.

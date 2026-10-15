@@ -107,6 +107,7 @@ public final class HazeHud {
     private static void gun(GuiGraphics g,ClientState s,float width){
         float cx=width/2,cy=540;
         boolean aim=HazeClient.controls.down(Controls.AIM);
+        boolean sliding=HazeClient.motion!=null&&HazeClient.motion.mode==Motion.Mode.SLIDE;
         double spread=(Retail.number(Retail.DATA.weapon().get("m_StandingSpread"))+s.bloom)*(aim?0.5:1);
         double gap=setting("citadel_crosshair_pip_gap")+1080*Math.tan(Math.toRadians(spread))/(2*Math.tan(Math.toRadians(HazeView.verticalFov(0))/2));
         int dot=(int)setting("citadel_crosshair_dot_size"),outline=(int)setting("citadel_crosshair_dot_outline_border");
@@ -120,7 +121,7 @@ public final class HazeHud {
             g.pose().popMatrix();
         }
         if(setting("citadel_crosshair_enable_clip_status")>0)arc(g,cx,cy,47,4,45,135,s.ammo/(double)Retail.DATA.weapon().get("m_iClipSize").getAsInt(),s.ammo<5?color("colorEnemy"):0xccffffff);
-        if(s.flurry)image(g,"icons/icon_infinite.png",cx-12.5F,cy+80,25,25,color("offWhite"));
+        if(s.flurry||sliding)image(g,"icons/icon_infinite.png",cx-12.5F,cy+80,25,25,color("offWhite"));
         else {text(g,""+s.ammo,cx-20,cy+80,16,"radiance",0xccffffff,true);text(g," / "+Retail.DATA.weapon().get("m_iClipSize").getAsInt(),cx-8,cy+80,16,"radiance",0x1affffff,false);}
         Motion motion=HazeClient.motion;
         if(motion!=null)for(var charge:StaminaDisplay.charges(motion.stamina,(int)motion.maxStamina())) {
