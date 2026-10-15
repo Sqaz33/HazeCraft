@@ -2,10 +2,16 @@
 
 ## Current implementation limits
 
-The existing Motion/HazeClient controller does not implement the contract below:
-it polls input at 20 Hz, advances six 120 Hz approximation steps, uses vanilla
-AABB movement, and lacks a matching authoritative server movement simulation.
-The following describes the replacement boundary, not shipped behavior.
+The 0.2.0 movement preview integrates CharacterMovementProfile with current
+25939744 movement data. MovementClock splits each 50ms host frame at 64Hz command
+boundaries and preserves the phase. Keyboard callbacks retain short taps and
+native button history for double crouch; exact fractional event timestamps and
+the central busy-action queue remain deferred. World collision is still the
+Minecraft AABB adapter, with proactive nearby-wall probes, rather than the native
+capsule/support solver. There is no matching authoritative server movement yet.
+Runtime position/velocity arithmetic remains double precision in metres, with
+source profile fields and verified helpers retaining float32 input semantics.
+The target contract below therefore remains only partially implemented.
 
 ## Replacement movement boundary (2026-10-15)
 

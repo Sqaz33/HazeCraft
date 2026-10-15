@@ -141,8 +141,55 @@ Full software regression passes: 38 tests, 983 original-code helper cases in tot
 
 Added DoublePressTracker and 864 original-code command-history block cases: six bits, 64/128Hz, all bit-plane states, strict timing boundaries and unsigned wrap. Focused command/support comparisons pass (25939744-command-parity-test.log). Added CharacterMovementProfile without Haze/global Retail/host dependencies; its source-data regression resolves all 67 complete profiles with different character stats and melee bindings (25939744-profile-parity-test.log). No gameplay integration yet.
 
-Recovered central action selection at 0x18087dd80, separate jump/mantle command bits and automatic mantle's blocked-push qualification. Native ability-type metadata and Jump's virtual predicate prove that the generic .25s busy queue is not a universal jump buffer. Full details and remaining gating branches are in MOVEMENT_RESEARCH.md. Corrected a prior collision interpretation: there is no second normalization after removing inward contact components; preserve tangential speed without adding a full-speed wall boost. The capsule/contact adapter is still pending.
+Recovered central action selection at 0x18087dd80 and automatic mantle's blocked-push qualification. Initial numeric slot interpretation was later disproven by schema metadata; see correction below before implementing input/queue behavior. Full details and remaining gating branches are in MOVEMENT_RESEARCH.md. Corrected a prior collision interpretation: there is no second normalization after removing inward contact components; preserve tangential speed without adding a full-speed wall boost. The capsule/contact adapter is still pending.
 
 Schema extraction now rejects RIP-relative metadata as a member offset, accepts decimal member offsets and checks source-name bytes. Refreshed movement catalogue: 168 explicit registrations. Updated docs/CONTRACT.md to distinguish implemented limitations from the intended 64Hz/fractional-input, authoritative movement boundary. No game process, old replay, public upload or replacement JAR during this stage.
 
 Full regression: all 40 software tests pass; 1847 original-code helper/block cases are available (`25939744-command-profile-regression-test.log`). The gameplay controller is still the old baseline; investigation and integration continue.
+
+Correction from current native schema: Jump is slot 12, Mantle 10, ZipLine 9,
+ClimbRope 11. Jump and mantle share bit 48; successful mantle runs first and
+consumes that bit. Jump slot 12 is in the native .25s busy-queue eligibility mask,
+but stamina/air-jump-limit failures do not qualify. The earlier slot-9-as-jump
+and no-jump-queue interpretation is superseded. Added source-hashed reproducible
+input-table extraction and verified original error-name table. Auto-mantle client
+preferences default false in all three modes. Refreshed cvar catalogue has 119
+entries with all prior 110 values unchanged. Cvar extraction now respects partial
+register widths and stops at the name's registration call.
+
+
+## 2026-10-15 — 0.2.0 movement preview, user-requested integration checkpoint
+
+User explicitly requested packaging accumulated findings now and finishing the
+movement model only on a later instruction. Stopped new native exploration.
+Refreshed private movement profile from pinned build 25939744, all three VData
+hashes and current source-hashed cvars; retained the prior converted model and
+animations without claiming a new model extraction.
+
+Connected reusable CharacterMovementProfile, 64Hz-boundary host clock, native
+button-history helper and double-crouch history. Captured short keyboard taps;
+blocked vanilla ground jump, auto-jump, crouch edge clipping and push-out in Haze.
+Integrated ground minimum acceleration, clamped air acceleration, dash-jump
+flight-time speed, falling-only coyote, air-jump directional addition, proactive
+side-wall contacts, tangent-preserving flat-wall impulse and vertical fatigue,
+stacking combat regen penalties, downward dash, parry cancel horizontal cap and
+gravity recovery, slide steering/momentum, closest mantle animation selection
+and verified trajectory timing/height correction. The HUD now displays separate
+maximum-stamina charge arcs and partial fills.
+
+Validation: all 52 JUnit tests pass; the suite includes the 1847 original-code
+helper/block cases and original animation/skin bounds. New behavior checks cover
+short taps, 64Hz host phase, strict double-crouch window, separate charge fills,
+acceleration, coyote/air jump, tangent preservation, regen expiration, parry and
+dash-jump landing into slide. Real Minecraft client smoke test passed with the
+new mixins, model render, knife locomotion, dash/slide, normal jump, narrow
+corridor, two-block mantle, abilities on mobs and Steve toggle. Logs:
+25939744-movement-preview-build.log / 25939744-movement-preview-client.log in the
+private lab evidence folder. Real-client scenarios do not establish exact
+Deadlock movement parity.
+
+Deferred: native capsule/support solver, authoritative movement reconciliation,
+complete air-dash callback execution, wall corners/lateral movement ownership,
+full slide/getup/session penalties and slopes, exact fractional input timings,
+qualified busy-action queue and native mantle probes. UI radial drawing and host
+collision remain adaptations. No upload or public remote was used.

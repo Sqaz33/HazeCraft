@@ -3,6 +3,8 @@ package dev.local.haze.sim;
 import com.google.gson.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.*;
+import dev.local.haze.sim.movement.CharacterMovementProfile;
 
 /** Immutable source table from the owner's pinned retail install. No wiki defaults. */
 public final class Retail {
@@ -29,6 +31,14 @@ public final class Retail {
     public JsonObject weapon() { return ability("citadel_weapon_haze_set").getAsJsonObject("m_mapWeaponInfos").getAsJsonObject("primary"); }
     public double stat(String id) { return number(hero.getAsJsonObject("m_mapStartingStats").get(id)); }
     public double nativeFloat(String id) { return number(root.getAsJsonObject("nativeFloatDefaults").getAsJsonObject(id).get("value")); }
+    public CharacterMovementProfile movementProfile() {
+        return new CharacterMovementProfile(root.getAsJsonObject("movementCharacter"),root.getAsJsonObject("abilities"));
+    }
+    public Map<String,Double> movementDefaults() {
+        Map<String,Double> values=new HashMap<>();
+        root.getAsJsonObject("nativeFloatDefaults").entrySet().forEach(e->values.put(e.getKey(),number(e.getValue().getAsJsonObject().get("value"))));
+        return Map.copyOf(values);
+    }
     public double field(String id, String key) { return number(ability(id).get(key)); }
     public double prop(String id, String key, int rank) { return prop(id,key,rank,0,0); }
     public double prop(String id, String key, int rank, double spirit, double baseWeaponIncrease) {

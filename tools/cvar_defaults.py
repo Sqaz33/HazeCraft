@@ -14,9 +14,24 @@ def register_family(reg):
                           'rsi':('rsi','esi','si','sil'),'rdi':('rdi','edi','di','dil')}.items():
         if name in aliases:return family
     return name.rstrip('dwb') if name.startswith('r') and name[1:2].isdigit() else name
+
+def register_value(operand, known):
+    family=register_family(operand.reg)
+    if family not in known:return None
+    shift=8 if md.reg_name(operand.reg) in ('ah','bh','ch','dh') else 0
+    return (known[family]>>shift)&((1<<(operand.size*8))-1)
+
+def register_store(operand, value, known):
+    family=register_family(operand.reg)
+    if operand.size>=4:return family,value&((1<<(operand.size*8))-1)
+    # A byte/word write does not establish unknown upper register bits.
+    if family not in known:return None
+    shift=8 if md.reg_name(operand.reg) in ('ah','bh','ch','dh') else 0
+    mask=((1<<(operand.size*8))-1)<<shift
+    return family,(known[family]&~mask)|((value<<shift)&mask)
 for ref in refs:
     name=ref['string']
-    if not name.startswith(('citadel_','sv_','in_','experimental_citadel_')) or len(name)>100: continue
+    if not name.startswith(('citadel_','cl_citadel_','sv_','in_','experimental_citadel_')) or len(name)>100: continue
     target=int(ref['xref_va'],16)-base
     name_instruction=next(md.disasm(pe.get_data(target,15),base+target),None)
     assert name_instruction is not None, ref
@@ -43,17 +58,23 @@ for ref in refs:
         if ins.mnemonic=='mov' and len(ins.operands)>1:
             dest,source=ins.operands[:2]
             if dest.type==capstone.x86.X86_OP_MEM and dest.mem.base==capstone.x86.X86_REG_RSP and dest.mem.disp==0x37 and source.type==capstone.x86.X86_OP_IMM:
-                integer=source.imm;integer_evidence=hex(ins.address)
-            if dest.type==capstone.x86.X86_OP_MEM and dest.mem.base==capstone.x86.X86_REG_RSP and dest.mem.disp==0x37 and source.type==capstone.x86.X86_OP_REG and register_family(source.reg) in known_registers:
-                integer=known_registers[register_family(source.reg)];integer_evidence=hex(ins.address)
+                integer=source.imm&0xff;integer_evidence=hex(ins.address)
+            if dest.type==capstone.x86.X86_OP_MEM and dest.mem.base==capstone.x86.X86_REG_RSP and dest.mem.disp==0x37 and source.type==capstone.x86.X86_OP_REG:
+                value=register_value(source,known_registers)
+                if value is not None:integer=value&0xff;integer_evidence=hex(ins.address)
         propagated=None
         if ins.operands and ins.operands[0].type==capstone.x86.X86_OP_REG:
-            family=register_family(ins.operands[0].reg)
-            if ins.mnemonic=='xor' and len(ins.operands)>1 and ins.operands[1].type==capstone.x86.X86_OP_REG and ins.operands[0].reg==ins.operands[1].reg:propagated=(family,0)
+            dest=ins.operands[0]
+            if ins.mnemonic=='xor' and len(ins.operands)>1 and ins.operands[1].type==capstone.x86.X86_OP_REG and dest.reg==ins.operands[1].reg:propagated=register_store(dest,0,known_registers)
             if ins.mnemonic=='mov' and len(ins.operands)>1:
                 operand=ins.operands[1]
-                if operand.type==capstone.x86.X86_OP_IMM:propagated=(family,operand.imm)
-                if operand.type==capstone.x86.X86_OP_REG and register_family(operand.reg) in known_registers:propagated=(family,known_registers[register_family(operand.reg)])
+                if operand.type==capstone.x86.X86_OP_IMM:propagated=register_store(dest,operand.imm,known_registers)
+                if operand.type==capstone.x86.X86_OP_REG:
+                    value=register_value(operand,known_registers)
+                    if value is not None:propagated=register_store(dest,value,known_registers)
+        if ins.mnemonic=='call' and ins.address>base+target:
+            # Bind this name to its own registration call, not later constructors.
+            break
         for written in ins.regs_access()[1]:known_registers.pop(register_family(written),None)
         if ins.mnemonic=='call':
             for family in ['rax','rcx','rdx','r8','r9','r10','r11']:known_registers.pop(family,None)

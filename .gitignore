@@ -10,3 +10,4 @@ src/main/resources/assets/haze/font/retail/
 src/main/resources/assets/haze/sounds/retail/
 private/
 tools/__pycache__/
+dist/

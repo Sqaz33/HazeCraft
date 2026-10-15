@@ -13,16 +13,23 @@ ASSETS=REPO/'src/main/resources/assets/haze/retail'
 DATA=REPO/'src/main/resources/haze/retail'
 ASSETS.mkdir(parents=True,exist_ok=True); DATA.mkdir(parents=True,exist_ok=True)
 
-heroes=loads((LAB/'retail/scripts/heroes.vdata').read_text(encoding='utf8'))
-abilities=loads((LAB/'retail/scripts/abilities.vdata').read_text(encoding='utf8'))
+REFERENCE=LAB/'reference/25939744'
+MOVEMENT=LAB/'research/25939744/movement'
+source=json.loads((REFERENCE/'source.json').read_text())
+for name,digest in source['dataHashes'].items():
+    assert hashlib.sha256((REFERENCE/name).read_bytes()).hexdigest()==digest,name
+heroes=loads((REFERENCE/'scripts/heroes.vdata').read_text(encoding='utf8'))
+abilities=loads((REFERENCE/'scripts/abilities.vdata').read_text(encoding='utf8'))
+verified_defaults=json.loads((MOVEMENT/'native-defaults.json').read_text())
+for record in abilities.values():
+    if isinstance(record,dict):
+        for key,proof in verified_defaults.get(record.get('_class'),{}).items():record.setdefault(key,proof['value'])
 hero=heroes['hero_haze']
 names=set(hero['m_mapBoundAbilities'].values())
-names.update(('citadel_ability_zipline_boost','citadel_ability_melee_parry'))
-native=json.loads((LAB/'evidence/native-float-defaults.json').read_text())
-extra=LAB/'evidence/movement-crosshair-defaults.json'
-if extra.exists():native.update(json.loads(extra.read_text()))
-extra=LAB/'evidence/movement-cost-defaults.json'
-if extra.exists():native.update(json.loads(extra.read_text()))
+names.add('citadel_ability_melee_parry')
+native=json.loads((LAB/'evidence/25939744-package-cvar-defaults.json').read_text())
+native.update(json.loads((MOVEMENT/'cvars.json').read_text()))
+assert all(v['sourceSha256']==source['clientSha256'] for v in native.values())
 model_data=(LAB/'evidence/model-data.txt').read_text(encoding='utf8')
 start=model_data.index('<!-- kv3')
 model_kv=loads(model_data[start:])
@@ -39,7 +46,7 @@ native_ability_file=LAB/'evidence/native-ability-defaults.json'
 if native_ability_file.exists():native_abilities=json.loads(native_ability_file.read_text())
 for ability,fields in native_abilities.items():
     for key,evidence in fields.items():abilities[ability].setdefault(key,evidence['value'])
-native_mantle=json.loads((LAB/'evidence/native-mantle-type-defaults.json').read_text())
+native_mantle=verified_defaults['MantleType_t']
 for mantle in abilities['citadel_ability_mantle']['m_vecMantleTypes']:
     for key,evidence in native_mantle.items():mantle.setdefault(key,evidence['value'])
 settings_path=pathlib.Path('C:/Program Files (x86)/Steam/userdata/1035274860/1422450/local/cfg/user_convars_0_slot0.vcfg')
@@ -50,11 +57,12 @@ if settings_path.exists():
         if key in allowed or key.startswith('citadel_crosshair_'):
             try:settings[key]=float(value)
             except ValueError:pass
-profile=dict(build='25917577',clientVersion=6779,revision=11123977,date='2026-10-13',
+profile=dict(build=source['build'],clientVersion=6782,revision=11127865,date='2026-10-14',source=source,
+             movementCharacter=json.loads((MOVEMENT/'profiles.json').read_text())['hero_haze'],
              hero=hero,abilities={k:abilities[k] for k in sorted(names) if k in abilities},
              nativeFloatDefaults=native,modelData=model_kv,modelKeys=model_keys,localInputSettings=settings,attachments=attachments,nativeAbilityDefaults=native_abilities)
-generic=loads((LAB/'retail/scripts/generic_data.vdata').read_text())
-native_generic=json.loads((LAB/'evidence/native-generic-defaults.json').read_text())
+generic=json.loads((MOVEMENT/'generic-data.json').read_text())
+native_generic=verified_defaults['CitadelGenericData_t']
 for key,evidence in native_generic.items():generic.setdefault(key,evidence['value'])
 profile['genericData']=generic;profile['nativeGenericDefaults']=native_generic
 profile['nativeMantleTypeDefaults']=native_mantle

@@ -32,7 +32,7 @@ class MovementIntegrityTest {
         for(int i=1;i<40;i++)m.step(DT,new Controls(Controls.FORWARD,0,0,0),collision,0,-1,true);
         m.step(DT,new Controls(Controls.FORWARD|Controls.JUMP,Controls.JUMP,0,0),collision,0,-1,true);
         assertEquals(Motion.Mode.AIR,m.mode);assertTrue(m.stamina<1.1);
-        assertTrue(m.velocity.horizontal()>25);assertTrue(m.velocity.y()>10);
+        assertEquals(19/(2*425.0/800)*(1-D.nativeFloat("citadel_air_drag_min")*DT),m.velocity.horizontal(),1e-5);assertTrue(m.velocity.y()>10);
     }
     @Test void dashSlideWaitsForRetailStartWindowAndKeepsSpeed(){
         Motion m=new Motion(D);V3[] position={V3.ZERO};var collision=ground(position);
@@ -54,7 +54,7 @@ class MovementIntegrityTest {
     @Test void wallJumpPushesAwayWithoutUsingStamina(){
         Motion m=new Motion(D);m.grounded=false;m.wall=true;m.wallNormal=new V3(0,0,-1);V3[] position={V3.ZERO};
         m.step(DT,new Controls(Controls.JUMP,Controls.JUMP,0,0),air(position),0,-1,true);
-        assertTrue(m.velocity.z()<-7);assertTrue(m.velocity.y()>13);assertEquals(3,m.stamina);assertFalse(m.grounded);
+        assertEquals(-(225+310)*.5*Retail.SOURCE_UNIT*(1-D.nativeFloat("citadel_air_drag_min")*DT),m.velocity.z(),1e-6);assertTrue(m.velocity.y()>13);assertEquals(3,m.stamina);assertFalse(m.grounded);
     }
     @Test void repeatedWallJumpUsesNativeCostAfterTheFreeFirstJump(){
         Motion m=new Motion(D);m.grounded=false;m.wall=true;m.wallNormal=new V3(0,0,-1);V3[] position={V3.ZERO};var collision=air(position);

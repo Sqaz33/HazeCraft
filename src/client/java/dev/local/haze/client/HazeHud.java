@@ -1,6 +1,7 @@
 package dev.local.haze.client;
 
 import dev.local.haze.sim.*;
+import dev.local.haze.sim.movement.StaminaDisplay;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -122,7 +123,12 @@ public final class HazeHud {
         if(s.flurry)image(g,"icons/icon_infinite.png",cx-12.5F,cy+80,25,25,color("offWhite"));
         else {text(g,""+s.ammo,cx-20,cy+80,16,"radiance",0xccffffff,true);text(g," / "+Retail.DATA.weapon().get("m_iClipSize").getAsInt(),cx-8,cy+80,16,"radiance",0x1affffff,false);}
         Motion motion=HazeClient.motion;
-        if(motion!=null)arc(g,cx,cy,62.5F,8,180,270,Math.min(1,motion.stamina),motion.stamina>=1?0x14ffffff:0xccffee00);
+        if(motion!=null)for(var charge:StaminaDisplay.charges(motion.stamina,(int)motion.maxStamina())) {
+            // Panorama starts radial angles at the top; Java's arc helper starts at the right.
+            double start=charge.start()-90,end=start+charge.extent();
+            arc(g,cx,cy,59.5F,4,start,end,1,0x66000000);
+            arc(g,cx,cy,58.5F,8,start,end,charge.fill(),charge.fill()<1?0x66ffee00:0x66ffffff);
+        }
         if(s.reload>0){arc(g,cx,cy,50,4,0,360,1,0x59242424);arc(g,cx,cy,50,4,45,135,1-s.reload/Retail.DATA.weapon().get("m_reloadDuration").getAsDouble(),color("colorEnemy"));}
     }
     private static double setting(String name){var local=Retail.DATA.root.getAsJsonObject("localInputSettings");return local.has(name)?Retail.number(local.get(name)):Retail.DATA.nativeFloat(name);}
@@ -161,9 +167,9 @@ public final class HazeHud {
         g.pose().popMatrix();
     }
     private static void arc(GuiGraphics g,float cx,float cy,float radius,int thickness,double start,double end,double fraction,int tint){
-        int steps=(int)Math.ceil((end-start)*Math.max(0,Math.min(1,fraction)));
+        int steps=(int)Math.ceil(Math.abs(end-start)*Math.max(0,Math.min(1,fraction)));
         for(int i=0;i<steps;i++){
-            double angle=Math.toRadians(start+i);float x=cx+(float)Math.cos(angle)*radius,y=cy+(float)Math.sin(angle)*radius;
+            double angle=Math.toRadians(start+Math.signum(end-start)*i);float x=cx+(float)Math.cos(angle)*radius,y=cy+(float)Math.sin(angle)*radius;
             g.pose().pushMatrix();g.pose().translate(x,y);g.pose().rotate((float)angle);g.fill(-thickness/2,-1,thickness/2+1,2,tint);g.pose().popMatrix();
         }
     }

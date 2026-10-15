@@ -8,7 +8,7 @@ import org.joml.Matrix4f;
 class RetailSimulationTest {
     private static final Retail D=Retail.DATA;
     @Test void pinnedOctoberBuildAndNativeDefaults(){
-        assertEquals("25917577",D.root.get("build").getAsString());
+        assertEquals("25939744",D.root.get("build").getAsString());
         assertEquals(730,D.stat("EMaxHealth"));assertEquals(8.2,D.stat("EMaxMoveSpeed"));
         assertEquals(800,D.nativeFloat("sv_gravity"));assertEquals(90,D.nativeFloat("citadel_camera_hero_fov"));
         assertEquals(103,D.camera.get("m_flCameraBackOffset").getAsDouble());
@@ -91,7 +91,7 @@ class RetailSimulationTest {
         m.step(1.0/120,new Controls(Controls.FORWARD|Controls.DASH,Controls.DASH,0,0),ground,0,-1);
         for(int i=1;i<75;i++)m.step(1.0/120,new Controls(Controls.FORWARD,0,0,0),ground,0,-1);
         assertEquals(10,pos[0].z(),1e-9);assertEquals(0,pos[0].x(),1e-9);
-        assertTrue(m.stamina<3);assertEquals(.62,m.dashDuration);
+        assertTrue(m.stamina<3);assertEquals(.62,m.dashDuration,1e-7);
     }
     @Test void groundJumpDoesNotConsumeStaminaAndAirJumpDoes(){
         Motion m=new Motion(D);V3[]pos={V3.ZERO};
@@ -104,7 +104,7 @@ class RetailSimulationTest {
     @Test void sprintRampsToHazeSpeedAndStopsDuringCombat(){
         Motion m=new Motion(D);V3[]pos={V3.ZERO};Controls forward=new Controls(Controls.FORWARD,0,0,0);
         for(int i=0;i<1200;i++)m.step(1.0/120,forward,deltaGround(pos),0,-1,false);
-        assertEquals(1.6,m.sprintBonus,1e-9);assertEquals(9.8,m.velocity.horizontal(),1e-6);assertEquals(Motion.Mode.SPRINT,m.mode);
+        assertEquals(1.6,m.sprintBonus,1e-6);assertEquals(9.8,m.velocity.horizontal(),1e-6);assertEquals(Motion.Mode.SPRINT,m.mode);
         m.step(1.0/120,forward,deltaGround(pos),0,-1,true);assertEquals(0,m.sprintBonus);assertEquals(Motion.Mode.RUN,m.mode);
         assertEquals(.6,D.field("citadel_ability_sprint","m_flSprintAccMS"),1e-7);
     }

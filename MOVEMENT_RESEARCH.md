@@ -458,8 +458,9 @@ or when no ground entity exists unless movement mode 2 is falling.
 The failed-jump timestamp +0x173c is presentation/error feedback, not an input
 buffer. 0x180289c60 delays errors 0x24/0x28 outside the dash state; 0x18028d3c0
 releases the cue on button release and suppresses it after a short hold. Do not
-invent buffering from that field. Successful mantle/dash cast events clear it
-and separately apply the original refund rules (0x180288810).
+invent buffering from that field. Successful mantle cast events clear it
+and separately apply the original refund rules (0x180288810); that callback's
+other slot-9 branch is the excluded zipline, not dash.
 
 All 38 software tests pass after support/parry additions
 (`25939744-support-regression-test.log`); 983 original-code cases are available.
@@ -478,19 +479,24 @@ command-number wrap. The helper matches all of them.
 The central action handler is 0x18087dd80. It iterates slots in ascending order,
 uses per-ability activation modes and a consumed-button mask, and gives mantle
 slot 10 a separate held/automatic-probe path. 0x1808af640 maps slots to a native
-24-byte table at 0x183280ee0: jump 9 uses bit 56, mantle 10 uses bit 48; both
-refer to +in_mantle. Dash 17 uses bit 44, crouch 13 bit 2, melee 22 bit 32,
-and held ability/parry 19 bit 42. The different bits must remain distinct even
-when the same physical key drives their command. Do not replace this with one
-Minecraft boolean called jump or interpret slot 11's excluded zipline as enabled.
+24-byte table at 0x183280ee0. **Current schema enum verifies Jump=12 and
+Mantle=10**, both using bit 48 and +in_mantle. ZipLine=9 uses bit 56; ClimbRope=11
+uses the same bit with +in_zipline. Earlier slot-9-as-jump interpretation was
+incorrect; slot numbers must come from current enum metadata. Dash=17 uses bit
+44, crouch=13 bit 2, melee=22 bit 32, and held ability/parry=19 bit 42. Preserve
+separate action eligibility/priority even when the same button drives jump and
+mantle. Excluded rope/zipline bindings must not be enabled. Reproducible export:
+movement_input_extract.py + 25939744-ability-slot-enum.json.
 
 Failed-action queue predicate 0x180502ca0 first limits eligibility by ability
 type (1/2), virtual +0x700 or slot-mask 0x7a1000. Current schema identifies VData
 +0x28 as m_eAbilityType; native enum identifies Innate=4. Jump's +0x700 returns
-false at 0x180273c80, and slot 9 is absent from the queue mask. Thus generic
-citadel_ability_busy_queue_time=.25 (constructor 0x1800af810) is **not a general
-quarter-second jump buffer**. Slots 12/17/19/20/21/22 are in that mask, with
-further failure-code and timing conditions in the predicate. The handler stores
+false at 0x180273c80, but **Jump slot 12 is in the queue mask**. Therefore it can
+use citadel_ability_busy_queue_time=.25 (constructor 0x1800af810), subject to
+failure-code and timing conditions; do not implement it as an unconditional
+quarter-second grace for every failed jump. Slots 12/17/19/20/21/22 are in that
+mask. The earlier claim excluding jump arose from the incorrect slot mapping
+and is superseded by the native enum. The handler stores
 pending button/expiry/error at pawn +0x17f0/+0x17f8/+0x17fc, retries eligible
 instant actions while the strict expiry comparison succeeds, and releases the
 deferred error after expiry. This differs from the jump presentation timestamp.
@@ -503,6 +509,11 @@ also checks source controller preferences, forward/backward input, clearance,
 probe flags and existing movement binding before calling it. Held-key mantle is
 a separate path. Default mantle cancellation cvar is false; do not enable the
 optional opposite-direction cancel by default.
+
+Current constructor defaults for cl_citadel_auto_mantle_forward, backward and
+in_air are all false. Thus the automatic path is optional, while held-button
+mantle remains available. The default same-bind preference for mantle/zipline
+is true, but it does not authorize adding either excluded traversal mechanic.
 
 ### Reusable character selection
 
@@ -520,3 +531,27 @@ against selected DLL bytes. The refreshed current movement catalogue has 168
 explicit member-pointer registrations, replacing the earlier 169-record result.
 
 Full regression: all 40 software tests pass; 1847 original-code helper/block cases are available (`25939744-command-profile-regression-test.log`). The gameplay controller is still the old baseline; investigation and integration continue.
+
+Native error names at table 0x18325a940 (lookup 0x1804aa360) identify queued
+failure codes: 2 cooldown, 7 no charges, 10 busy with action, 16 disarmed,
+24 cannot use off ground. Nonqueued jump-specific failures include 36 out of
+stamina and 40/41 air-jump count limits; dash-jump errors 52/53/54/55 identify
+stamina, early, late and already attempted. The .25s queue predicate is not a
+blanket prelanding buffer after a spent air jump. Current slot order puts mantle
+10 before jump 12; a successful mantle consumes their shared bit 48 before the
+jump iteration. Held-button mantle can retry clearance without creating a fresh
+jump press. Native exports retain schema names to prevent another slot-ID mixup.
+
+Expanded source-validated cvar extraction has 119 entries (including research-only
+UI/debug entries). All 110 previous values remain unchanged. It now includes
+client auto-mantle preferences and busy-action queue timing; partial register
+writes no longer invent unknown upper bits, and a name is associated with its
+first following registration call instead of later constructor calls.
+
+
+## Integration checkpoint — 0.2.0 movement preview
+
+On 2026-10-15 the user requested a runnable build now and deferred finishing the
+movement model until a later instruction. Research is paused at that boundary.
+See MODLOG.md and docs/CONTRACT.md for the exact integrated subset, test evidence
+and remaining limitations. This preview is not a parity-complete controller.
