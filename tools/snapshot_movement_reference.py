@@ -38,6 +38,14 @@ if server_snapshot.exists():
     assert hashlib.sha256(server_snapshot.read_bytes()).hexdigest() == server_hash, 'Pinned server changed'
 else:
     server_snapshot.write_bytes(server_before)
+engine = game / 'game/bin/win64/engine2.dll'
+engine_before = engine.read_bytes()
+engine_hash = hashlib.sha256(engine_before).hexdigest()
+engine_snapshot = out / 'engine2.dll'
+if engine_snapshot.exists():
+    assert hashlib.sha256(engine_snapshot.read_bytes()).hexdigest() == engine_hash, 'Pinned engine changed'
+else:
+    engine_snapshot.write_bytes(engine_before)
 shutil.copy2(game / 'game/citadel/steam.inf', out / 'steam.inf')
 env = os.environ.copy()
 env['DOTNET_ROOT'] = str(lab / 'tools/dotnet')
@@ -66,12 +74,14 @@ assert len(files) == 3, files
 assert manifest.read_bytes() == manifest_before, 'Steam updated during extraction; retry with a stable build'
 assert hashlib.sha256(client.read_bytes()).hexdigest() == client_hash, 'Client changed during extraction'
 assert hashlib.sha256(server.read_bytes()).hexdigest() == server_hash, 'Server changed during extraction'
+assert hashlib.sha256(engine.read_bytes()).hexdigest() == engine_hash, 'Engine changed during extraction'
 source = {
     'build': build, 'source': str(client), 'clientSha256': client_hash,
     'serverSource': str(server), 'serverSha256': server_hash,
+    'engineSource': str(engine), 'engineSha256': engine_hash,
     'steamInf': (out / 'steam.inf').read_text(), 'dataHashes': files,
     'vpkDirectorySha256': hashlib.sha256((game / 'game/citadel/pak01_dir.vpk').read_bytes()).hexdigest(),
-    'valuesSource': 'Owned installed VPK and native client/server only; no replay or online gameplay dataset',
+    'valuesSource': 'Owned installed VPK and native client/server/engine only; no replay or online gameplay dataset',
 }
 (out / 'source.json').write_text(json.dumps(source, indent=2), encoding='utf-8')
 print(json.dumps({'build': build, 'clientSha256': client_hash, 'dataFiles': len(files), 'snapshot': str(out)}))

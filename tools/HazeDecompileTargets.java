@@ -30,6 +30,13 @@ public class HazeDecompileTargets extends GhidraScript {
                 String[] ends=segment.split("-");Address first=toAddr(ends[0]),last=toAddr(ends[1]).subtract(1);body.add(first,last);if(entry==null||first.compareTo(entry)<0)entry=first;
                 new DisassembleCommand(first,new AddressSet(first,last),true).applyTo(currentProgram,monitor);
             }
+            // A previously selected leaf block may later be proven to belong to
+            // a larger function. Remove only this script's fully enclosed labels.
+            List<Address> interior=new ArrayList<>();
+            for(Function candidate:currentProgram.getFunctionManager().getFunctions(body,true))
+                if(!candidate.getEntryPoint().equals(entry) && candidate.getName().startsWith("Movement_")
+                        && body.contains(candidate.getBody()))interior.add(candidate.getEntryPoint());
+            for(Address address:interior)currentProgram.getFunctionManager().removeFunction(address);
             Function function=getFunctionAt(entry);
             if(function==null)function=currentProgram.getFunctionManager().createFunction(parts[0],entry,body,SourceType.USER_DEFINED);
             else {function.setName(parts[0],SourceType.USER_DEFINED);function.setBody(body);}
@@ -87,6 +94,7 @@ public class HazeDecompileTargets extends GhidraScript {
                 if(!result.decompileCompleted())throw new IllegalStateException(result.getErrorMessage());
                 Files.writeString(output.resolve(function.getName()+".c"),result.getDecompiledFunction().getC());
             }
+            println("HAZE_BATCH_COMPLETE "+functions.size());
         }finally{decompiler.dispose();}
     }
 }

@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory=$true)][string]$Name,
     [Parameter(Mandatory=$true)][string[]]$Addresses,
     [string]$Build = '25939744',
-    [ValidateSet('client','server')][string]$Module = 'client',
+    [ValidateSet('client','server','engine2')][string]$Module = 'client',
     [hashtable]$Kinds = @{}
 )
 $ErrorActionPreference = 'Stop'
@@ -23,9 +23,14 @@ $lines = foreach ($row in $rows) {
 [System.IO.File]::WriteAllLines($targets, [string[]]$lines)
 $env:JAVA_HOME = 'D:/Projects/ExpeditionCraft/work/toolchains/temurin25/jdk-25.0.4.1+1'
 $runner = "$lab/tools/ghidra/ghidra_12.1.4_PUBLIC/support/analyzeHeadless.bat"
-$project = if ($Module -eq 'client') { "Retail$Build" } else { "Retail${Build}Server" }
-$output = if ($Module -eq 'client') { "$lab/decompiled/$Build/movement" } else { "$lab/decompiled/$Build/server-movement" }
+$project = switch ($Module) { 'client' { "Retail$Build" }; 'server' { "Retail${Build}Server" }; 'engine2' { "Retail${Build}Engine2" } }
+$output = if ($Module -eq 'client') { "$lab/decompiled/$Build/movement" } else { "$lab/decompiled/$Build/$Module-movement" }
 $mode = if (Test-Path -LiteralPath "$lab/ghidra-project/$project.gpr") { @('-process',"$Module.dll") } else { @('-import',"$lab/reference/$Build/$Module.dll") }
 & $runner "$lab/ghidra-project" $project @mode -noanalysis -scriptPath "$root/tools" -postScript HazeDecompileTargets.java $targets $output *> "$lab/evidence/$Build-ghidra-$Name.log"
 if ($LASTEXITCODE -ne 0) { throw "Decompilation failed: $lab/evidence/$Build-ghidra-$Name.log" }
+$logText = Get-Content -LiteralPath "$lab/evidence/$Build-ghidra-$Name.log" -Raw
+$expected = @($rows | Where-Object { $Kinds[$_.start.Substring(2)] -ne 'bind' }).Count
+if ($logText -notmatch "HAZE_BATCH_COMPLETE $expected\s") {
+    throw "Ghidra did not complete the script; inspect $lab/evidence/$Build-ghidra-$Name.log"
+}
 Get-Content -LiteralPath "$lab/evidence/$Build-ghidra-$Name.log" -Tail 6

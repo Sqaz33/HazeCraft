@@ -280,8 +280,8 @@ Client native registration at 0x180563e21 identifies pawn +0x13e0 as
 `m_sInCombat`, type CCitadelRecentDamage. Both wrappers test current time against
 the start/end interval at +0xc/+0x10 (client 0x181646b60, server 0x18096f1b0).
 The original modifier is hidden, allows MULTIPLE instances, supplies -25% stamina
-regeneration and lasts 5 seconds. The exact common percentage aggregation still
-needs checking; do not simply multiply .75 for every stack.
+regeneration and lasts 5 seconds. The common percentage aggregation is now
+verified below; the repeated negative-only case does multiply .75 per stack.
 
 Native EMeleeHold_AttackState metadata identifies None=0, Charging=1,
 GroundDashing=2, AirDashing=3, Attacking=4, SlideDashing=5. Movement callback
@@ -347,5 +347,93 @@ and exit/counter reset rules. Track source address/data key and unresolved branc
 - Haze integration supplies its profile, action modifiers and animation bindings.
 
 Required checks cover combinations and boundaries, including all four user-reported
-cases. Existing 32 tests are stability/regression tests, not proof of native parity.
+cases. The original regression tests are stability checks, not proof of native parity.
 Research and implementation are still in progress.
+
+## Further verified current-code findings (2026-10-15)
+
+### Command timing and button edges
+
+CCitadelGameConfiguration primary vtable 0x182725118, index 13, is the complete
+function 0x180728d40. With experimental_citadel_tick_rate_override < 1 it returns
+the literal .015625 seconds (64 Hz); otherwise it returns 1 / override. The
+constructor 0x1800a6a10 registers that cvar with default zero. Botmatch and hideout
+override cvars separately default to 32; they do not prove the regular match rate.
+Evidence: 25939744-full-tick-getter-functions.json and current cvar constructor
+references. engine2.dll is also pinned in source.json, but its tick_interval
+serializer is not evidence of the default rate.
+
+0x18085d400 selects pressed (kind 0), held (1), released (2), or double-pressed
+(3). Button state has three 64-bit planes: held, changed, and within-command
+history. The original 16-entry transition table at 0x1832ca600 preserves a press
+and release within one command. Original predicates are pressed=(held & changed)
+| history, released=(~held & changed) | history, and within-command double press
+=held & changed & history. 0x1817b7000 also tracks 64 last-press command numbers;
+its strict command-delta comparison uses round(.22 / interval), or 14 at 64 Hz.
+0x1817a8370 processes ordered fractional command steps, updating and restoring
+time globals around movement callbacks. Polling once at Minecraft's 20 Hz loses
+this information. ButtonState reproduces the native bit-plane operations, but
+input event capture, timestamps and fractional simulation are not connected yet.
+
+### Stamina percentage aggregation and omitted data
+
+Client stat 67 callback 0x1808bd700 uses 0x1808a4880. Common percentage aggregator
+0x181307be0 folds values using 0x1812fc8c0: positive values multiply a separate
+product by (1-p/100), negative values multiply another by (1+p/100). The result
+is max(0, 1 + negativeProduct - positiveProduct). Thus repeated -25% wall-jump
+debuffs give .75^n, while mixed +10/-25 gives .85, not .825. The independent
+PercentageStack helper reproduces both raw products and the final formula.
+
+Profile extraction now fills 17 source-verified defaults by VData class, including
+mantle times/minimum height and generic combat durations (hero 3s, nonhero .5s,
+neutral 3s). Original generic_data.vdata is exported alongside character profiles.
+Current default citadel_use_character_proxy is false, verified in 0x1800b2130;
+no installed loose config override was found. Do not substitute the newer proxy
+collision path for default 0x180881480.
+
+### Ground acceleration, support and collision
+
+0x180859ff0 projects existing velocity onto wish direction and adds only missing
+speed. Its ordinary grounded branch uses max(wishSpeed, 400 Source units/s) *
+characterAcceleration * dt * surfaceFriction. Haze's 8.2m/s is below the 10.16m/s
+floor, so its unmodified acceleration is 40.64m/s², not 32.8. The separate no-ground
+branch uses dt * acceleration * wishSpeed * .25. Direction and max wish speed are
+prepared by 0x18085fcf0; preserve that separation in the replacement.
+
+0x18085c280 integrates a damped support spring with frequency 10Hz and damping 1,
+omega=2*pi*f. Above squared speed 160000 Source units²/s² damping changes to .25.
+It uses the prior support normal/height and a separate spring velocity; this is
+not a hard snap of the player's feet onto a floor. Original model capsule uses
+step 32, radius 20 and top 80 for Haze, with lower center step+radius and upper
+center max(top, lower); duck/tuck modify these centers. Earlier 32x72 AABB notes
+describe an incomplete host adaptation, not the actual movement capsule.
+
+Default collision 0x180881480 performs up to 16 outer iterations and projects
+penetration/contact constraints. At its final velocity correction, it removes
+inward plane components from normalized velocity, then renormalizes and restores
+the original speed magnitude unless another event overrides it. Zeroing blocked
+Minecraft axes loses this behavior. Capsule sweeps, support classification,
+ceiling response and host collision ownership remain implementation work.
+
+### Parry cancellation during a dash
+
+Dash registration 0x180291100 binds cast callback 0x1802885e0; casting ability
+slot 0x13 routes to 0x180244150. On a ground dash, this computes original dash
+distance / adjusted duration * hero speed scale * .4 in dash heading, preserving
+vertical velocity. It ends the dash, clears support spring and retains the
+modifier for .4s. Friction callback 0x180256960 supplies -90 until that expiry.
+On an air dash, it ends the dash and caps only horizontal speed to air-dash
+distance / duration * .4; a slower current horizontal speed is preserved, as is
+vertical velocity. It records the cancel time and retains the modifier for the
+greater of post-dash drag duration and .4s. The .3 parry-air-gravity VData field
+still needs its consuming callback verified; do not apply it by name alone.
+
+### Evidence and limitations
+
+The isolated original-x64 state oracle supplies 48 button-transition cases
+(including bits 0/31/63 and press/release/double predicates) and 77 percentage
+fold cases. Together with the earlier 198 math and 396 mantle cases there are
+719 original-code cases. All 36 software tests pass in
+evidence/25939744-state-regression-test.log. These are helper-level checks; the
+replacement movement engine, Minecraft adapter and gameplay parity are unfinished.
+No game was launched, no old replay was used, and no new JAR was delivered.
