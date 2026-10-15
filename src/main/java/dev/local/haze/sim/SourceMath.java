@@ -1,8 +1,14 @@
 package dev.local.haze.sim;
 
-/** Scalar path decoded from the owned client.dll, 0x1821e8ad0. */
+/** Shared scalar rules verified against the owned client, build 25939744. */
 public final class SourceMath {
     private SourceMath(){}
+    /** Clamped scalar remap, verified against the pinned native math oracle. */
+    public static float remapClamped(float value,float low,float high,float outputLow,float outputHigh){
+        if(low==high)return value-high<0?outputLow:outputHigh;
+        float fraction=Math.max(0,Math.min(1,(value-low)/(high-low)));
+        return fraction*(outputHigh-outputLow)+outputLow;
+    }
     public static float bias(float value,float bias){
         float x=Math.max(0,Math.min(1,value)),b=Math.max(Float.MIN_NORMAL,Math.min(1,bias));
         return x/((1/b-2)*(1-x)+1);

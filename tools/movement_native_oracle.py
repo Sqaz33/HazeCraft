@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import random
 import struct
+from kv3 import loads
 
 import pefile
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_64, UC_HOOK_CODE
@@ -72,7 +73,9 @@ for value in [-1, 0, .1, .3, .55, 1, 2]:
     cases.append({'kernel': 'remap', 'input': args,
                   'expected': invoke(0x180292b60, floats=args[:4], fifth=args[4])})
 
-definitions = json.loads((reference.parent.parent / 'research/25939744/movement/shared-definitions.json').read_text())
+ability_data=(reference / 'scripts/abilities.vdata').read_bytes()
+assert hashlib.sha256(ability_data).hexdigest()==source['dataHashes']['scripts/abilities.vdata']
+definitions = loads(ability_data.decode('utf-8'))
 curves = {
     'wallLateral': definitions['citadel_ability_jump']['m_WallJumpLateralSpeedFalloffVsAlongSpeed'],
     'slideGetup': definitions['citadel_ability_slide']['m_GetupSpeedCurve'],

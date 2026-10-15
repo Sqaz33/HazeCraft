@@ -18,6 +18,9 @@ scope or evidence that other actions are correct.
 - Steam build 25939744, Client/Server 6782, SourceRevision 11127865, Oct 14 2026.
 - Frozen native reference: external `D:/DeadlockHazeLab/reference/25939744/client.dll`.
 - SHA256: `b7deb2d934614b2b9a4e3edf6cf7bfb954b9f1436aadb0bf07b24f07bb7d5515`.
+- Frozen authoritative server: external `reference/25939744/server.dll`, SHA256
+  `a0a92d06d5f4ffca7f5d604fac4a8b76c5eac3f288e0cdd8d2e7dcd43787a5e8`.
+  Server and client have separate address catalogues and decompiler projects.
 - Universal Modder scan confirms Source 2/native x64. Investigation is offline/static.
 - Current VPK was decompiled to stdout and compared: Haze and the bound jump,
   dash, slide, sprint, mantle, parry and melee definitions match the earlier
@@ -162,6 +165,53 @@ cvar is enabled. That controller supplies capsule geometry, origin, combined
 velocity and dt to 0x181739380 and consumes contacts afterward. The old and new
 solver branches must not be combined into an invented hybrid. Generic view-vector
 hull data and camera heights do not establish the physical capsule.
+The flag is now identified: `citadel_use_character_proxy`, constructor
+0x1800b2130, handle +0x1837da338, **default false**. No override was found in the
+installed loose game cfg/vcfg/gi/text data. The custom contact solver in
+0x180881480 is therefore the recovered default path, not the proxy controller.
+
+Wall qualification is an independent overlap/shape query at 0x180295490, reached
+from 0x180297b50. It expands the capsule by the VData collision distance (omitted
+default 8, offset +0x1730, store 0x18023a53a). It filters contacts by
+`abs(normal.z) <= .707`, weights normals by distance inside the expanded shell,
+then normalizes their sum. With no new contact, it can retain an earlier normal
+when at least .2 seconds have elapsed since the previous wall jump and distance
+from the stored origin is less than radius/2. A follow-up sweep rejects one entity
+type; that type still needs a verified enum name. 0x180297b50 classifies front,
+left, right and back relative to the pawn basis; normal acquisition does not
+require the player to move into the wall. Current Minecraft adapter does.
+
+Normal jump multiplies the existing velocity by .75 only for state **71**
+SLIDING_SLOW_GETUP, then replaces vertical velocity with the jump impulse. Native
+jump completion 0x18024dd50 removes the grounded handle and assigns velocity once.
+Landing/reset callbacks 0x180288ce0 / 0x180288db0 clear air-jump and wall-jump counts,
+the jump-session counters and wall-jump timestamp. Coyote eligibility at
+0x1802a0da0 additionally requires downward vertical velocity.
+
+Slide control 0x18029ffe0 tracks crouch pressed time, whether the press occurred
+airborne, sticky slide, requested slide, activation delay and a ground-start time.
+Ground activation is normally >=350 Source units/s, or >=250 during ground dash;
+qualified slopes have a separate entry path. Sustaining normally needs 170.
+0x1802970f0 performs the actual enter/exit transition. Its pending dash-slide speed
+adjustment is `targetSpeed*movementScale-currentHorizontalSpeed`, applied once by
+the slide movement callback, rather than replacing the velocity every frame.
+0x18029ea20 updates friction with dash, flat-ground, landing, uphill/downhill and
+movement-time modifiers; 0x180253440 rejects probe samples outside their slope and
+velocity-difference standard-deviation limits instead of averaging every sample.
+
+The sprint acceleration property at 0x180299500 converts .6 **m/s²** to Source
+units using .0254 (not a percentage). Sprint duration at 0x180299530 is elapsed
+time since activation. 0x18028df50 gates it on input, combat, disabled state,
+crouch/ground conditions and current attacks. 0x180298950 separately tests whether
+the actor has reached the speed required for sprint presentation.
+
+Down-dash eligibility 0x180242dd0 recognizes crouch double-press, toggle-crouch
+double-press or a dedicated down-dash button. It uses an independent count and .5
+cost. Normal dash requires nonzero directional input; the Java fallback to a
+forward dash on neutral input is another discrepancy. 0x180283690 refunds the
+previous air/dash jump cost when the next mantle (window .1) or excluded zipline
+action (window .2) qualifies; the first free wall jump cannot refund a paid charge.
+Only the mantle refund is in this port's scope.
 
 The charge updater was traced from the Dash HUD lambda RTTI and verified direct
 call site, not from the similarly named overhead widget:
@@ -206,6 +256,65 @@ An isolated Unicorn x64 harness executes four allowlisted original math kernels
 vector-length helper. It produced 198 source-hashed cases outside Git without
 loading the DLL into Windows or launching/attaching to the game. Those cases are
 an independent oracle for later port tests, not an end-to-end movement pass.
+The first Java comparison caught an actual discrepancy: spline output was not
+clamped to its declared y-domain. At slide-getup x=.15, the old Java evaluator
+returned -20.011478 while original x64 returned -20. Fixed the shared evaluator's
+domain clamp and added native clamped remap. All 198 oracle cases now pass, and
+all 33 software regression tests pass (`25939744-math-regression-test.log`). This
+is a numerical helper correction; the movement engine has not yet been replaced.
+
+### Server cross-check, combat and melee movement
+
+The server Jump execute method is 0x180299c60 (primary vtable index 327),
+not the client's index 309. Comparing class-unique methods avoids confusing
+inherited base methods with the jump dispatcher. It dispatches classifier
+0x180253ce0 to normal 0x180255490, air 0x180254820, wall 0x180255a10,
+and dash-jump 0x180254d60, then common velocity bookkeeping 0x180255860.
+The air path has its own count, conditionally charges one stamina, and increments
+the count; wall uses its separate free/paid count and the same fatigue/lateral rules.
+The server additionally emits resource-consumption and presentation events.
+
+Wall jump applies VData `m_DebuffModifier` (+0x1698) only while in combat:
+client 0x18024deb0 calls 0x180875b50; server 0x180255a10 calls 0x180b53e40.
+Client native registration at 0x180563e21 identifies pawn +0x13e0 as
+`m_sInCombat`, type CCitadelRecentDamage. Both wrappers test current time against
+the start/end interval at +0xc/+0x10 (client 0x181646b60, server 0x18096f1b0).
+The original modifier is hidden, allows MULTIPLE instances, supplies -25% stamina
+regeneration and lasts 5 seconds. The exact common percentage aggregation still
+needs checking; do not simply multiply .75 for every stack.
+
+Native EMeleeHold_AttackState metadata identifies None=0, Charging=1,
+GroundDashing=2, AirDashing=3, Attacking=4, SlideDashing=5. Movement callback
+0x180284640 has distinct ground/air/slide paths, original movement-speed curves,
+turn-rate and acceleration limits, gravity suppression and collision cancellation.
+The old mod's instantaneous light melee does not reproduce these interactions.
+Reverified current CAbilityHoldMelee_VData constructor 0x18023a050 and schema
+0x180277840: required heavy hold .55s (+0x13f0), maximum light hold .2s
+(+0x13f4), charge animation delay .1s (+0x1410). Profile extraction now applies
+omitted defaults by original VData class, including all character melee bindings,
+instead of tying them to ability_melee_haze. Eleven defaults are source verified.
+
+### Mantle path and clearance
+
+0x180248670 caches a probe by position and heading and calls 0x18029b950.
+That path performs capsule clearance and ledge sweeps, then 0x180296550 chooses
+the valid mantle type closest to its animation height within overlapping min/max
+ranges. Picking the first max-height match, as the current mod does, is wrong.
+0x1802435b0 also requires the input direction dot mantle-forward >= .7.
+0x1802574c0 evaluates the trajectory: vertical and horizontal durations round to
+the native tick interval; a Bias(.7) front/up correction reaches full weight
+halfway through the vertical phase; horizontal travel begins after the vertical
+phase. 0x1802851d0 applies the difference between two trajectory samples,
+suppresses ordinary gravity, checks cancellation input, landing and interruption,
+and limits exit speed. Current linear two-phase movement lacks these corrections.
+The isolated x64 trajectory oracle now produces 396 original-code cases across
+four heights, three headings, three supplied tick intervals and phase boundaries.
+The independent reusable MantleTrajectory numeric helper passes all 396 cases;
+all 34 software tests pass (`25939744-mantle-regression-test.log`). It is not yet
+connected to gameplay. Assembly proved GameTime_t is passed as R8D bits, despite
+the provisional decompiler prototype displaying float; the harness now uses the
+verified ABI and asserts that time changes the result.
+Remaining probe/cancellation branches and host collision are still under audit.
 
 ## Investigation checklist — do not mark complete from builds alone
 

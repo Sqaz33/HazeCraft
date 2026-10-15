@@ -27,25 +27,31 @@ for name, digest in source['dataHashes'].items():
     assert hashlib.sha256((reference / name).read_bytes()).hexdigest() == digest, name
 constructors = json.loads((evidence / '25939744-movement-constructors.json').read_text())
 functions = json.loads((evidence / '25939744-movement-functions.json').read_text())
+melee_constructor = next(f for f in json.loads((evidence / '25939744-combat-schema-functions.json').read_text())
+                         if f['start'] == '0x18023a050')
+melee_schema_function = json.loads((evidence / '25939744-melee-vdata-schema.json').read_text())[0]
+assert melee_schema_function['sourceSha256'] == source['clientSha256']
+melee_schema = melee_schema_function['instructions']
+constructors.append(melee_constructor)
 assert all(f['sourceSha256'] == source['clientSha256'] for f in constructors + functions)
 instructions = {i['address']: (f, i) for f in constructors for i in f['instructions']}
 jump_schema = next(f for f in functions if f['start'] == '0x180276180')['instructions']
 
-def schema_offset(name):
-    index = next(i for i, row in enumerate(jump_schema) if row.get('string') == name)
-    for row in jump_schema[index + 1:index + 9]:
-        found = re.fullmatch(r'r[89], \[rdi \+ (0x[0-9a-f]+)\]', row['operands'])
+def schema_offset(name, rows=jump_schema):
+    index = next(i for i, row in enumerate(rows) if row.get('string') == name)
+    for row in rows[index + 1:index + 9]:
+        found = re.fullmatch(r'r9, \[r(?:di|si) \+ (0x[0-9a-f]+)\]', row['operands'])
         if row['mnemonic'] == 'lea' and found:
             return int(found[1], 16)
     raise AssertionError('Missing schema offset: ' + name)
 
 defaults = {}
-def literal_float(ability, field, address, offset, schema=True):
+def literal_float(ability, field, address, offset, schema=True, rows=jump_schema):
     function, row = instructions[address]
-    match = re.fullmatch(r'(?:dword|qword) ptr \[rbx \+ (0x[0-9a-f]+)\], (0x[0-9a-f]+)', row['operands'])
+    match = re.fullmatch(r'(?:dword|qword) ptr \[r(?:bx|di) \+ (0x[0-9a-f]+)\], (0x[0-9a-f]+)', row['operands'])
     assert row['mnemonic'] == 'mov' and match and int(match[1], 16) == offset, row
     if schema:
-        assert schema_offset(field) == offset
+        assert schema_offset(field, rows) == offset
     bits = int(match[2], 16) & 0xffffffff
     value = struct.unpack('<f', struct.pack('<I', bits))[0]
     defaults.setdefault(ability, {})[field] = {
@@ -55,6 +61,7 @@ def literal_float(ability, field, address, offset, schema=True):
 
 for field, address, offset in [
     ('m_flMaxSpeedDelta', '0x18023a4f3', 0x16d4),
+    ('m_flCollidedWallMaxDist', '0x18023a53a', 0x1730),
     ('m_flDashJumpMantleDisableTime', '0x18023a508', 0x1700),
     ('m_flDashJumpExtraAirControlTime', '0x18023a512', 0x1704),
     ('m_flDashJumpExtraAirControlPercent', '0x18023a51c', 0x1708),
@@ -63,6 +70,12 @@ for field, address, offset in [
     literal_float('citadel_ability_jump', field, address, offset)
 literal_float('citadel_ability_dash', 'm_flDownwardAirDashSpeed', '0x180239ffb', 0x182c, False)
 literal_float('citadel_ability_sprint', 'm_flSprintAccMS', '0x18023aa15', 0x14d8, False)
+for field, address, offset in [
+    ('m_flHeavyAttackRequiredHoldTime', '0x18023a098', 0x13f0),
+    ('m_flLightAttackMaxHoldTime', '0x18023a0a2', 0x13f4),
+    ('m_flChargeAnimDelayTime', '0x18023a0cd', 0x1410),
+]:
+    literal_float('citadel_ability_hold_melee', field, address, offset, rows=melee_schema)
 heroes = loads((reference / 'scripts/heroes.vdata').read_text(encoding='utf-8'))
 abilities = loads((reference / 'scripts/abilities.vdata').read_text(encoding='utf-8'))
 roles = {
@@ -83,7 +96,7 @@ for name, hero in heroes.items():
             continue
         if ability not in all_abilities:
             record = copy.deepcopy(abilities[ability])
-            for field, proof in defaults.get(ability, {}).items():
+            for field, proof in defaults.get(record.get('_class'), {}).items():
                 record.setdefault(field, proof['value'])
             all_abilities[ability] = record
     profiles[name] = {

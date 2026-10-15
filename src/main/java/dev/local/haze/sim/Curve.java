@@ -5,6 +5,12 @@ import com.google.gson.*;
 /** Retail cubic Hermite curve; preserve explicit incoming/outgoing derivatives. */
 public final class Curve {
     public static double sample(JsonObject curve,double x) {
+        double value=sampleRaw(curve,x);
+        if(curve.has("m_vDomainMins"))value=Math.max(value,curve.getAsJsonArray("m_vDomainMins").get(1).getAsDouble());
+        if(curve.has("m_vDomainMaxs"))value=Math.min(value,curve.getAsJsonArray("m_vDomainMaxs").get(1).getAsDouble());
+        return value;
+    }
+    private static double sampleRaw(JsonObject curve,double x) {
         JsonArray points=curve.getAsJsonArray("m_spline");
         JsonObject first=points.get(0).getAsJsonObject(),last=points.get(points.size()-1).getAsJsonObject();
         if(x<=n(first,"x")) return n(first,"y");
