@@ -26,8 +26,9 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     public static Motion motion;
     public static Controls controls=Controls.NONE;
     public static boolean active;
-    private static int sequence,previous,previousUpgradeKeys;
+    private static int sequence,previous,previousUpgradeKeys,previousItemKeys;
     private static boolean toggleWasDown;
+    private static long lastItemMovement,lastItemStamina;
     private static CameraType previousCamera;
     private static MovementClock movementClock=new MovementClock();
     private static MovementKeys movementKeys=new MovementKeys();
@@ -126,6 +127,10 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         if(alt)for(int i=0;i<4;i++)if(key(window,GLFW.GLFW_KEY_1+i))upgrades|=1<<i;
         for(int i=0;i<4;i++)if((upgrades&(1<<i))!=0&&(previousUpgradeKeys&(1<<i))==0)send(10+i);
         previousUpgradeKeys=upgrades;
+        int itemKeys=0;int[] activeKeys={GLFW.GLFW_KEY_Z,GLFW.GLFW_KEY_X,GLFW.GLFW_KEY_C,GLFW.GLFW_KEY_V};
+        if(mc.screen==null&&!alt)for(int i=0;i<4;i++)if(key(window,activeKeys[i]))itemKeys|=1<<i;
+        for(int i=0;i<4;i++)if((itemKeys&(1<<i))!=0&&(previousItemKeys&(1<<i))==0)send(200+i,0);
+        previousItemKeys=itemKeys;
         if(mc.screen!=null&&!(mc.screen instanceof UpgradeScreen)&&!(mc.screen instanceof ShopScreen)) { clearInput();send(0);return; }
         int held=0;
         int[] keys={GLFW.GLFW_KEY_W,GLFW.GLFW_KEY_S,GLFW.GLFW_KEY_A,GLFW.GLFW_KEY_D,GLFW.GLFW_KEY_SPACE,GLFW.GLFW_KEY_LEFT_SHIFT,GLFW.GLFW_KEY_LEFT_CONTROL};
@@ -159,10 +164,12 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     @Override public boolean travel(Player player) {
         if(!(player instanceof LocalPlayer p)||!active||motion==null||p.isPassenger())return false;
         ClientState state=own();
+        if(state!=null){if(state.itemMovementSerial!=lastItemMovement){lastItemMovement=state.itemMovementSerial;motion.velocity=new V3(motion.velocity.x(),state.itemImpulse,motion.velocity.z());motion.grounded=false;}
+        if(state.itemStaminaSerial!=lastItemStamina){lastItemStamina=state.itemStaminaSerial;motion.stamina=motion.maxStamina();}}
         motion.itemMoveSpeed=0;motion.itemSprintSpeed=0;motion.itemStamina=0;motion.itemStaminaRegenReduction=0;
         if(state!=null){
             var inventory=state.itemInventory;
-            motion.itemMoveSpeed=inventory.stat("BonusMoveSpeed");motion.itemSprintSpeed=inventory.stat("BonusSprintSpeed");motion.itemStamina=inventory.stat("Stamina");motion.itemStaminaRegenReduction=inventory.reduction("StaminaCooldownReduction");
+            motion.itemMoveSpeed=state.itemMoveSpeed;motion.itemSprintSpeed=inventory.stat("BonusSprintSpeed");motion.itemStamina=inventory.stat("Stamina");motion.itemStaminaRegenReduction=inventory.reduction("StaminaCooldownReduction");
         }
         double bonus=state!=null&&state.smoke?Retail.DATA.prop("ability_smoke_bomb","InvisMoveSpeedMod",state.ranks[1]):0;
         double cap=state!=null&&state.flurry?Retail.DATA.prop("ability_bullet_flurry","ChannelMoveSpeed",state.ranks[3]):-1;
@@ -172,7 +179,9 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         long jumpBefore=motion.jumpSerial;
         movementClock.advance(.05,controls,(dt,input)->{
             DebugTools.beforeStep();motion.step(dt,input,collision,bonus,cap,state!=null&&state.inCombat);DebugTools.afterStep();
+            if(state!=null&&state.itemFlight>0){V3 direction=V3.look(controls.yaw(),controls.pitch());motion.velocity=direction.mul(controls.down(Controls.FORWARD)?state.itemFlightSpeed:0);motion.grounded=false;}
         });
+        if(motion.jumpSerial!=jumpBefore&&(before==Motion.Mode.DASH_GROUND||before==Motion.Mode.DASH_AIR))send(210,0);
         if((before==Motion.Mode.SLIDE)!=(motion.mode==Motion.Mode.SLIDE))send(HazeProtocol.SLIDE_STATE_COMMAND,0);
         HazeSounds.movement(before,jumpBefore,motion,controls,p);
         p.setPose(motion.ducked?Pose.CROUCHING:Pose.STANDING);

@@ -555,3 +555,12 @@ Abilities и прежние регрессии. Только программн�
 passive procs и active execution не заявляются работающими. В UI есть явные
 отметки, подробная матрица — SHOP_STATUS.md. Доказательства вне Git:
 reference/25950029/shop-stage7/{raw,decompiled,evidence.json}.
+
+## 2026-10-16 — 0.3.13 item runtime
+Owner rejected catalogue-only items. Universal Modder scan reconfirmed owned
+Source 2 installation; use pinned private original definitions only. Added
+stateful active/passive runtime and server/client integration, ZXCV, cooldown
+and barrier HUD. Source values from each item's full m_mapAbilityProperties;
+no game files added to Git. Scope/fidelity gaps recorded in SHOP_STATUS.md.
+Owner stopped all testing mid-turn: subsequent build excluded test, no game
+controls or automatic gameplay checks. Direct launch only for owner testing.

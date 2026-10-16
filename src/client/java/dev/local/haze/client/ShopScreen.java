@@ -57,7 +57,7 @@ public final class ShopScreen extends Screen {
         if(item!=null){
             icon(g,item,left+60,230,128);text(g,item.name(),left+60,380,29,"oracle",0xffffefd7);text(g,""+inventory.price(item.id())+" ДУШ",left+60,420,23,"radiance",0xffa4d8ce);
             int row=0;for(var stat:item.stats().entrySet())if(stat.getValue()!=0){text(g,String.format(Locale.ROOT,"%+.1f %s%s",stat.getValue(),ItemCatalog.label(stat.getKey()),ItemCatalog.APPLIED.contains(stat.getKey())?"":" (не действует)"),left+60,465+row++*26,18,"radiance",0xffd4d7cb);if(row>=9)break;}
-            if(ItemCatalog.pending(item))text(g,"Особый эффект пока недоступен",left+60,735,19,"radiance",0xffe2bb79);
+            if(item.active())text(g,"Применение: Z / X / C / V по порядку покупки",left+60,735,19,"radiance",0xffe2bb79);
             if(!item.components().isEmpty()){text(g,"КОМПОНЕНТЫ",left+60,780,20,"oracle",0xffd4d7cb);int n=0;for(String component:item.components()){var base=ItemCatalog.ITEMS.get(component);if(base!=null)icon(g,base,left+60+n++*70,815,60);}}
         }
         text(g,"ЛКМ — купить / улучшить    ПКМ — продать",left+660,900,21,"radiance",0xffb7c0b0);

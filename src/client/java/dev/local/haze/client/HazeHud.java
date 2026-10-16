@@ -150,11 +150,14 @@ public final class HazeHud {
             int slot=col*2+row;
             if(slot<s.items.size()){
                 var item=ItemCatalog.ITEMS.get(s.items.get(slot));
-                if(item!=null){int tint=item.category().endsWith("WeaponMod")?0xffce9a56:item.category().endsWith("Armor")?0xff88ba53:0xffb58bcb;g.fill(col*51+3,row*51+3,col*51+48,row*51+48,tint);ShopScreen.icon(g,item,col*51+3,row*51+3,45);}
+                if(item!=null){int tint=item.category().endsWith("WeaponMod")?0xffce9a56:item.category().endsWith("Armor")?0xff88ba53:0xffb58bcb;g.fill(col*51+3,row*51+3,col*51+48,row*51+48,tint);ShopScreen.icon(g,item,col*51+3,row*51+3,45);
+                    int activeSlot=s.itemInventory.active().indexOf(item.id());
+                    if(activeSlot>=0){text(g,new String[]{"Z","X","C","V"}[activeSlot],col*51+8,row*51+31,14,"radiance",0xffffffff,false);if(s.itemCooldowns[activeSlot]>0){g.fill(col*51+3,row*51+3,col*51+48,row*51+48,0xa0000000);text(g,""+(int)Math.ceil(s.itemCooldowns[activeSlot]),col*51+25,row*51+16,20,"radiance",0xffffffff,true);}}}
             }
             if(col>=base/2)image(g,"hud/shop_ability_upgrades_lock_icon_png.png",col*51+16.5F,row*51+14.25F,18,22.5F,0x26ffffff);
         }
         g.pose().popMatrix();
+        if(s.itemBarrier>0)text(g,"ЩИТ "+(int)s.itemBarrier,left+30,849,22,"radiance",0xff85d9ed,false);
         image(g,"hud/core/spirit_jar_frame_png.png",left+30,875,60,60,color("offWhite"));
         text(g,"1",left+62.5F,896,28,"mono",color("offWhite"),true);
         image(g,"hud/icons/icon_soul.png",left+88,889,20,36,color("shardColor"));

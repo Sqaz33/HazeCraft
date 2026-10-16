@@ -7,11 +7,13 @@ public final class Abilities {
     public double time, smokeStart=-100, smokeUntil, buffUntil, flurryStart, flurryUntil, daggerAt=-1;
     public int smokeCharges=1;
     public double itemSpirit,itemWeaponPercent,itemCooldownReduction,itemDurationPercent,itemRangePercent,itemRadiusPercent;
+    public int itemCharges;public double itemChargeReduction,itemChargeCooldownReduction,itemUltimateReduction;
     private double smokeNextRecharge;
     public Abilities(Retail data) { this.data=data; }
     public double p(int index,String name) {
         double value=data.prop(Retail.SIGNATURES[index],name,ranks[index],itemSpirit,itemWeaponPercent);
-        if(name.equals("AbilityCooldown"))value*=1-itemCooldownReduction;
+        if(name.equals("AbilityCooldown"))value*=(1-itemCooldownReduction)*(1-(index==1?itemChargeCooldownReduction:index==3?itemUltimateReduction:0));
+        if(name.equals("AbilityCooldownBetweenCharge"))value*=1-itemChargeReduction;
         if(name.equals("AbilityDuration")||name.equals("SleepDuration"))value*=1+itemDurationPercent/100;
         if(name.equals("AbilityCastRange"))value*=1+itemRangePercent/100;
         if(name.equals("Radius")||name.equals("RadiusMin"))value*=1+itemRadiusPercent/100;
@@ -40,7 +42,7 @@ public final class Abilities {
     }
     public void advance(double dt) {
         time+=dt;
-        int max=ranks[1]>=2?(int)p(1,"AbilityCharges"):1;
+        int max=(ranks[1]>=2?(int)p(1,"AbilityCharges"):1)+itemCharges;
         if(smokeCharges<max && time>=smokeNextRecharge && smokeNextRecharge>0) {
             smokeCharges++; smokeNextRecharge=time+p(1,"AbilityCooldown");
         }
@@ -57,7 +59,7 @@ public final class Abilities {
     /** Debug refill preserves cast delays and running effects. */
     public void clearCooldowns() {
         java.util.Arrays.fill(readyAt,time);
-        smokeCharges=ranks[1]>=2?(int)p(1,"AbilityCharges"):1;
+        smokeCharges=(ranks[1]>=2?(int)p(1,"AbilityCharges"):1)+itemCharges;
         smokeNextRecharge=0;
     }
     public boolean invisible() { return smokeActive() && time-smokeStart>=p(1,"InvisFadeToDuration"); }

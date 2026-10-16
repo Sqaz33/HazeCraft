@@ -11,11 +11,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class LivingMotionMixin {
     @ModifyVariable(method="hurtServer",at=@At("HEAD"),argsOnly=true,ordinal=0)
     private float haze$itemResistance(float amount,net.minecraft.server.level.ServerLevel level,net.minecraft.world.damagesource.DamageSource source,float original){
+        if(source.getEntity()!=null)for(var effectOwner:dev.local.haze.HazeMod.ACTORS.values())if(effectOwner.active)amount*=effectOwner.outgoingItemMultiplier(source.getEntity().getId());
         var actor=dev.local.haze.HazeMod.ACTORS.get(((LivingEntity)(Object)this).getUUID());
         if(actor==null||!actor.active)return amount;
-        String key=source.is(net.minecraft.tags.DamageTypeTags.IS_PROJECTILE)?"BulletResist":source.getDirectEntity() instanceof LivingEntity?"MeleeResistPercent":"";
-        return (float)(amount*(1-actor.items.reduction(key)));
+        if((Object)this instanceof net.minecraft.server.level.ServerPlayer p)return actor.incomingItemDamage(p,source,amount);
+        return amount;
     }
+    @ModifyVariable(method="heal",at=@At("HEAD"),argsOnly=true,ordinal=0)
+    private float haze$itemHealing(float amount){if(!((LivingEntity)(Object)this).level().isClientSide())for(var actor:dev.local.haze.HazeMod.ACTORS.values())if(actor.active)amount*=actor.healMultiplier(((LivingEntity)(Object)this).getId());return amount;}
     @Inject(method="jumpFromGround",at=@At("HEAD"),cancellable=true)
     private void haze$ownedJump(CallbackInfo ci) {
         if((Object)this instanceof Player p&&p.level().isClientSide()&&HazeHooks.active(p))ci.cancel();
