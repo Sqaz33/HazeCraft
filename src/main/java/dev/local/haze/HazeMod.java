@@ -15,9 +15,14 @@ public final class HazeMod implements ModInitializer {
     public static final Map<UUID,HazeActor> ACTORS=new HashMap<>();
     @Override public void onInitialize() {
         PayloadTypeRegistry.playC2S().register(HazeProtocol.Input.TYPE,HazeProtocol.Input.CODEC);
+        PayloadTypeRegistry.playC2S().register(HazeProtocol.Debug.TYPE,HazeProtocol.Debug.CODEC);
         PayloadTypeRegistry.playS2C().register(HazeProtocol.Snapshot.TYPE,HazeProtocol.Snapshot.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(HazeProtocol.Input.TYPE,(packet,context)->{
             ServerPlayer p=context.player();ACTORS.computeIfAbsent(p.getUUID(),HazeActor::new).accept(packet,p);
+        });
+        ServerPlayNetworking.registerGlobalReceiver(HazeProtocol.Debug.TYPE,(packet,context)->{
+            ServerPlayer p=context.player();HazeActor actor=ACTORS.get(p.getUUID());
+            if(actor!=null)actor.debug(packet,p);
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler,server)->{HazeActor a=ACTORS.remove(handler.player.getUUID());if(a!=null&&a.active)a.toggle(handler.player);});
         ServerTickEvents.END_SERVER_TICK.register(server->{

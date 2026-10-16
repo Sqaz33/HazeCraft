@@ -21,7 +21,7 @@ public final class Motion {
     private final CharacterMovementProfile profile;
     private final Map<String,Double> nativeValues;
     private final double shootScale,zoomScale;
-    private final double staminaRegenMultiplier;
+    private double staminaRegenMultiplier;
     private final JsonObject dashCurve;
     private static final double UNIT=0.0254;
     public V3 velocity=V3.ZERO;
@@ -64,6 +64,10 @@ public final class Motion {
     private double p(CharacterMovementProfile.Role role,String key) { return profile.baseProperty(role,key); }
     private double n(String key) { Double value=nativeValues.get(key);if(value==null)throw new IllegalArgumentException("Missing movement rule: "+key);return value; }
     public double maxStamina() { return profile.stat("EStamina"); }
+    public void setStaminaRegenMultiplier(double value){
+        if(!Double.isFinite(value)||value<0)throw new IllegalArgumentException("Stamina regeneration multiplier");
+        staminaRegenMultiplier=value;
+    }
     public boolean crouchedPose() { return grounded&&ducked; }
     public void step(double dt,Controls input,Collision world,double bonusSpeed,double capSpeed) {
         step(dt,input,world,bonusSpeed,capSpeed,false);

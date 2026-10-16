@@ -79,12 +79,14 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
             }
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler,mc)->{
+            DebugTools.clear();
             if(previousCamera!=null&&active)mc.options.setCameraType(previousCamera);
             active=false;motion=null;STATES.clear();clearInput();sequence=0;movementClock=new MovementClock();
             HazeSounds.clear();
         });
         ClientTickEvents.START_CLIENT_TICK.register(HazeClient::tick);
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("haze","hud"),(g,dt)->HazeHud.render(g));
+        HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("haze","debug_overlay"),(g,dt)->DebugTools.renderOverlay(g));
         WorldRenderEvents.END_EXTRACTION.register(HazeRenderer::extract);
         WorldRenderEvents.AFTER_ENTITIES.register(HazeRenderer::draw);
         WorldRenderEvents.AFTER_ENTITIES.register(HazeEffects::draw);
@@ -93,6 +95,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     private static boolean key(long handle,int key) { return GLFW.glfwGetKey(handle,key)==GLFW.GLFW_PRESS; }
     private static boolean button(long handle,int key) { return GLFW.glfwGetMouseButton(handle,key)==GLFW.GLFW_PRESS; }
     private static void tick(Minecraft mc) {
+        DebugTools.permissions();
         if(mc.player==null||mc.level==null) { clearInput();return; }
         long window=mc.getWindow().handle();
         boolean toggle=key(window,GLFW.GLFW_KEY_F6);
@@ -127,6 +130,10 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     public static void send(int command) {
         send(command,controls.pressed());
     }
+    public static void debug(DebugAction action,int value){
+        if(DebugScreen.allowed()&&active&&ClientPlayNetworking.canSend(HazeProtocol.Debug.TYPE))
+            ClientPlayNetworking.send(new HazeProtocol.Debug(action.ordinal(),value));
+    }
     private static void send(int command,int pressed) {
         int held=controls.held();
         if(motion!=null&&motion.mode==Motion.Mode.SLIDE&&controls.down(Controls.CROUCH))held|=Controls.SLIDING;
@@ -142,7 +149,9 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         Motion.Collision collision=playerCollision;
         Motion.Mode before=motion.mode;
         long jumpBefore=motion.jumpSerial;
-        movementClock.advance(.05,controls,(dt,input)->motion.step(dt,input,collision,bonus,cap,state!=null&&state.inCombat));
+        movementClock.advance(.05,controls,(dt,input)->{
+            DebugTools.beforeStep();motion.step(dt,input,collision,bonus,cap,state!=null&&state.inCombat);DebugTools.afterStep();
+        });
         if((before==Motion.Mode.SLIDE)!=(motion.mode==Motion.Mode.SLIDE))send(HazeProtocol.SLIDE_STATE_COMMAND,0);
         HazeSounds.movement(before,jumpBefore,motion,controls,p);
         p.setPose(motion.ducked?Pose.CROUCHING:Pose.STANDING);

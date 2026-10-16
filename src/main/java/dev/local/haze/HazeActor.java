@@ -22,6 +22,9 @@ public final class HazeActor {
     public final UUID owner;
     public boolean active;
     public boolean debugNoCooldowns;
+    public boolean debugInfiniteAmmo,debugLockHealth;
+    private float debugHealth;
+    private int debugTargetId=-1;
     public net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension;
     public final Gun gun=new Gun(DATA);
     public final Abilities abilities=new Abilities(DATA);
@@ -48,6 +51,7 @@ public final class HazeActor {
             oldMaxHealth=p.getAttribute(Attributes.MAX_HEALTH).getBaseValue();oldHealth=p.getHealth();
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(DATA.stat("EMaxHealth"));p.setHealth((float)DATA.stat("EMaxHealth"));
         } else {
+            debugLockHealth=false;
             p.getAbilities().flying=oldFlying&&p.getAbilities().mayfly;p.onUpdateAbilities();
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(oldMaxHealth);if(p.isAlive())p.setHealth((float)Math.min(oldHealth,p.getMaxHealth()));
             p.setInvisible(false);input=Controls.NONE;projectiles.clear();traces.clear();
@@ -72,7 +76,7 @@ public final class HazeActor {
         input=new Controls(packet.held()&0x3ffff,packet.pressed()&0x1ffff,packet.yaw(),Math.max(-89,Math.min(89,packet.pitch())));
     }
     public void tick(ServerPlayer p) {
-        if(!p.isCreative())debugNoCooldowns=false;
+        if(!p.isCreative()){debugNoCooldowns=false;debugInfiniteAmmo=false;debugLockHealth=false;}
         if(!active) return;
         if(debugNoCooldowns)abilities.clearCooldowns();
         if(dimension!=p.level().dimension()) { var old=p.level().getServer().getLevel(dimension);if(old!=null)clearStatuses(old);targets.clear();dimension=p.level().dimension(); }
@@ -110,7 +114,7 @@ public final class HazeActor {
             if(input.edge(Controls.RELOAD)) { gun.reload(0);setAction("reload"); }
             boolean fire=input.down(Controls.FIRE) && abilities.daggerAt<0 && meleeHeld<=0 && abilities.time>=parryUntil;
             boolean slide=input.down(Controls.SLIDING)&&input.down(Controls.CROUCH);
-            for(Gun.Shot shot:gun.advance(dt/6,fire||flurry,input.down(Controls.AIM),flurry,slide,rate,bonus,0)) {
+            for(Gun.Shot shot:gun.advance(dt/6,fire||flurry,input.down(Controls.AIM),flurry||debugInfiniteAmmo,slide,rate,bonus,0)) {
                 if(gun.shotCount%2==0)lastLeftShot=abilities.time;else lastRightShot=abilities.time;
                 if(fire) abilities.breakSmoke();
                 if(flurry) flurryShot(p,shot);
@@ -120,12 +124,77 @@ public final class HazeActor {
             advanceProjectiles(p,dt/6);
         }
         p.setInvisible(abilities.invisible());
-        if(p.getHealth()<p.getMaxHealth()) p.heal((float)(DATA.stat("EBaseHealthRegen")*dt));
+        if(debugLockHealth)p.setHealth(Math.max(1,Math.min(debugHealth,p.getMaxHealth())));
+        else if(p.getHealth()<p.getMaxHealth()) p.heal((float)(DATA.stat("EBaseHealthRegen")*dt));
         applyStatuses(p);
         actionTime+=abilities.time-before;
         input=input.withoutEdges();
     }
     private void setAction(String next) { action=next;actionTime=0; }
+    public void debug(HazeProtocol.Debug packet,ServerPlayer p){
+        DebugAction op=DebugAction.fromId(packet.action());
+        if(op==null||!DebugAction.allowed(p.isCreative(),active))return;
+        int value=packet.value();
+        switch(op){
+            case HEALTH_PERCENT,HEALTH_VALUE -> {debugHealth=DebugAction.health(value,p.getMaxHealth(),op==DebugAction.HEALTH_PERCENT);p.setHealth(debugHealth);}
+            case MAX_HEALTH -> {
+                p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(DebugAction.bounded(value,1,1024));
+                debugHealth=Math.max(1,Math.min(p.getHealth(),p.getMaxHealth()));p.setHealth(debugHealth);
+            }
+            case LOCK_HEALTH -> {debugLockHealth=!debugLockHealth;debugHealth=p.getHealth();}
+            case NO_COOLDOWNS -> {debugNoCooldowns=!debugNoCooldowns;if(debugNoCooldowns)abilities.clearCooldowns();}
+            case CLEAR_COOLDOWNS -> abilities.clearCooldowns();
+            case ABILITY_RANK -> {if(value>=0&&value<16)abilities.debugRank(DebugAction.abilityIndex(value),DebugAction.abilityRank(value));}
+            case STOP_ABILITIES -> {abilities.debugStop();projectiles.removeIf(Projectile::dagger);daggerStarted=-100;p.setInvisible(false);setAction("idle");}
+            case INFINITE_AMMO -> {debugInfiniteAmmo=!debugInfiniteAmmo;if(debugInfiniteAmmo)gun.reloadRemaining=0;}
+            case AMMO -> {gun.ammo=DebugAction.bounded(value,0,gun.clipSize(0));gun.reloadRemaining=0;}
+            case RELOAD -> {gun.reload(0);if(gun.reloadRemaining>0)setAction("reload");}
+            case SPAWN_TARGET,SPAWN_GROUP -> {
+                int count=op==DebugAction.SPAWN_GROUP?5:1;
+                var existing=ownedTargets(p);
+                for(int i=0;i<count&&existing.size()+i<20;i++)spawnDebugTarget(p,i,count);
+            }
+            case SELECT_TARGET -> {
+                Vec3 start=p.getEyePosition(),end=start.add(p.getLookAngle().scale(64));
+                var candidates=p.level().getEntitiesOfClass(LivingEntity.class,new AABB(start,end).inflate(2),e->e instanceof Mob&&e.isAlive());
+                debugTargetId=candidates.stream().filter(e->e.getBoundingBox().inflate(.3).clip(start,end).isPresent()&&p.hasLineOfSight(e))
+                    .min(Comparator.comparingDouble(p::distanceToSqr)).map(Entity::getId).orElseGet(()->ownedTargets(p).stream().min(Comparator.comparingDouble(p::distanceToSqr)).map(Entity::getId).orElse(-1));
+            }
+            case CLEAR_TARGETS -> {for(var target:ownedTargets(p)){targets.remove(target.getId());target.discard();}debugTargetId=-1;}
+            default -> {
+                LivingEntity target=debugTarget(p);if(target==null)return;
+                switch(op){
+                    case TARGET_HEALTH -> target.setHealth(target.getMaxHealth());
+                    case TARGET_STACKS -> {
+                        Fixation f=targets.computeIfAbsent(target.getId(),id->new Fixation());
+                        f.stacks=DebugAction.bounded(value,0,(int)abilities.p(2,"MaxStacks"));f.expires=abilities.time+abilities.p(2,"AbilityDuration");
+                    }
+                    case TARGET_SLEEP -> targets.computeIfAbsent(target.getId(),id->new Fixation()).dagger(DATA,abilities.ranks[0],abilities.ranks[2],abilities.time);
+                    case TARGET_RESET -> {
+                        targets.remove(target.getId());var speed=target.getAttribute(Attributes.MOVEMENT_SPEED);if(speed!=null)speed.removeModifier(slowId());
+                        target.setHealth(target.getMaxHealth());
+                    }
+                    default -> {}
+                }
+            }
+        }
+    }
+    private List<net.minecraft.world.entity.animal.golem.IronGolem> ownedTargets(ServerPlayer p){
+        return p.level().getEntitiesOfClass(net.minecraft.world.entity.animal.golem.IronGolem.class,p.getBoundingBox().inflate(64),e->e.getTags().contains("haze_debug_"+owner));
+    }
+    private LivingEntity debugTarget(ServerPlayer p){
+        var entity=p.level().getEntity(debugTargetId);
+        return entity instanceof Mob e&&e.isAlive()&&p.distanceToSqr(e)<=64*64?e:null;
+    }
+    private void spawnDebugTarget(ServerPlayer p,int index,int count){
+        var target=EntityType.IRON_GOLEM.create(p.level(),EntitySpawnReason.COMMAND);if(target==null)return;
+        Vec3 forward=p.getLookAngle().multiply(1,0,1).normalize();if(forward.lengthSqr()<.01)forward=new Vec3(0,0,1);
+        Vec3 side=new Vec3(-forward.z,0,forward.x);
+        target.setPos(p.position().add(forward.scale(6+index%2*2)).add(side.scale((index-(count-1)/2.0)*2.4)));
+        target.setNoAi(true);target.setPersistenceRequired();target.getAttribute(Attributes.MAX_HEALTH).setBaseValue(1024);target.setHealth(1024);
+        target.addTag("haze_debug_"+owner);target.setCustomName(net.minecraft.network.chat.Component.literal("Haze — манекен"));target.setCustomNameVisible(true);
+        if(p.level().noCollision(target)&&p.level().addFreshEntity(target))debugTargetId=target.getId();
+    }
     private void debug(int command,ServerPlayer p) {
         switch(command) {
             case HazeProtocol.DEBUG_REFILL -> {
@@ -305,6 +374,16 @@ public final class HazeActor {
         j.addProperty("health",p.getHealth());j.addProperty("maxHealth",p.getMaxHealth());j.addProperty("ammo",gun.ammo);
         j.addProperty("reload",gun.reloadRemaining);j.addProperty("time",abilities.time);j.addProperty("recoil",gun.recoil);j.addProperty("bloom",gun.bloom);
         j.addProperty("debugNoCooldowns",debugNoCooldowns&&p.isCreative());
+        j.addProperty("debugInfiniteAmmo",debugInfiniteAmmo&&p.isCreative());j.addProperty("debugLockHealth",debugLockHealth&&p.isCreative());
+        if(p.isCreative()&&active){
+            var target=debugTarget(p);
+            if(target!=null){
+                JsonObject info=new JsonObject();info.addProperty("id",target.getId());info.addProperty("name",target.getName().getString());
+                info.addProperty("health",target.getHealth());info.addProperty("maxHealth",target.getMaxHealth());info.addProperty("distance",p.distanceTo(target));
+                var fixation=targets.get(target.getId());info.addProperty("stacks",fixation==null?0:fixation.stacks);info.addProperty("sleep",fixation!=null&&fixation.asleep(abilities.time));
+                j.add("debugTarget",info);
+            }
+        }
         j.addProperty("smoke",abilities.smokeActive());j.addProperty("invisible",abilities.invisible());j.addProperty("flurry",abilities.flurry());
         j.addProperty("action",action);j.addProperty("actionTime",actionTime);j.addProperty("shots",gun.shotCount);
         j.addProperty("daggerTime",abilities.time-daggerStarted);

@@ -39,6 +39,13 @@ public final class Abilities {
         if(smokeUntil>0 && time>=smokeUntil) breakSmoke();
     }
     public boolean smokeActive() { return smokeUntil>time; }
+    public void debugRank(int index,int rank){
+        if(index<0||index>=4)return;
+        ranks[index]=Math.max(0,Math.min(3,rank));clearCooldowns();
+    }
+    public void debugStop(){
+        smokeUntil=buffUntil=flurryUntil=0;daggerAt=-1;
+    }
     /** Debug refill preserves cast delays and running effects. */
     public void clearCooldowns() {
         java.util.Arrays.fill(readyAt,time);
