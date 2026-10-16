@@ -37,6 +37,9 @@ with zipfile.ZipFile(source) as jar:
     jar.getinfo('dev/local/haze/sim/DebugAction.class')
     jar.getinfo('dev/local/haze/client/DebugTools.class')
     jar.getinfo('dev/local/haze/HazeProtocol$Debug.class')
+    jar.getinfo('dev/local/haze/sim/movement/MantleExit.class')
+    mantle=json.loads(jar.read('haze/retail/profile.json'))['abilities']['citadel_ability_mantle']['m_vecMantleTypes']
+    assert all(float(t['m_flSlideExitBoostOnGround'])==400 for t in mantle)
 destination = root / 'dist' / source.name
 destination.parent.mkdir(exist_ok=True)
 shutil.copy2(source, destination)

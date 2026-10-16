@@ -39,6 +39,8 @@ public final class Motion {
     public int wallJumps;
     private MantleTrajectory mantleTrajectory;
     private V3 mantlePosition=V3.ZERO;
+    private V3 mantleDirection=V3.ZERO;
+    private double mantleSlideBoost;
     private double mantleEnd,dashJumpUntil=-100,parryCancelTime,parrySlideUntil,airDashTravel,postDashTime=-100;
     private double slideExit=-100,getupStart=-100,groundedSince,landedTime=-100;
     private int slideJumps;
@@ -118,10 +120,19 @@ public final class Motion {
         if(mode==Mode.MANTLE) {
             if(dt==0)return;
             V3 target=mantleTrajectory.sample((float)time);
+            V3 previousVelocity=velocity;
+            velocity=target.sub(mantlePosition).mul(1/dt);
             MoveResult result=collide(world,target.sub(mantlePosition),false,dt);
             mantlePosition=mantlePosition.add(result.actual());
             if(time>=mantleEnd) {
-                mode=grounded?Mode.RUN:Mode.AIR;velocity=wish.mul(profile.stat("EMaxMoveSpeed"));
+                // At completion Source retains the preceding trajectory velocity,
+                // caps it, then adds the type's +400-unit held-crouch impulse.
+                velocity=MantleExit.velocity(previousVelocity,wish,mantleDirection,
+                    profile.stat("EMaxMoveSpeed")+bonusSpeed,mantleSlideBoost,input.down(Controls.CROUCH),grounded);
+                mode=grounded?Mode.RUN:Mode.AIR;
+                if(grounded&&input.down(Controls.CROUCH)&&velocity.horizontal()>=f(SLIDE,"m_flMinActivationSpeed")*UNIT){
+                    mode=Mode.SLIDE;slideStart=time;dashSlide=false;ducked=true;
+                }
             }
             return;
         }
@@ -253,6 +264,8 @@ public final class Motion {
         }
         if(selected==null)return false;
         mantleHeight=(int)Retail.number(selected.get("m_flAnimHeight"));
+        mantleSlideBoost=Retail.number(selected.get("m_flSlideExitBoostOnGround"))*UNIT;
+        mantleDirection=target.flat().normalized();
         // Host probe supplies the endpoint; native helper supplies timing and height correction.
         mantleTrajectory=new MantleTrajectory(V3.ZERO,target.withY(mantleHeight*UNIT),(float)time,
             (float)Retail.number(selected.get("m_flVerticalTime")),(float)Retail.number(selected.get("m_flHorizontalTime")),
