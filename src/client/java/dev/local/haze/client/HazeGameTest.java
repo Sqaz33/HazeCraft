@@ -38,6 +38,25 @@ public final class HazeGameTest implements FabricClientGameTest {
             world.getClientWorld().waitForChunksRender();context.waitTicks(20);
             require(context.computeOnClient(mc->HazeRenderer.renderedFrames>0),"Haze geometry never rendered");
             context.takeScreenshot("haze-01-idle");report.addProperty("idleRendered",true);
+            if(HazePerformance.ENABLED){
+                boolean oldVsync=context.computeOnClient(mc->mc.options.enableVsync().get());
+                int oldLimit=context.computeOnClient(mc->mc.options.framerateLimit().get());
+                context.runOnClient(mc->{mc.setWindowActive(true);mc.options.enableVsync().set(false);mc.options.framerateLimit().set(260);});
+                JsonArray measurements=new JsonArray();
+                try {
+                for(boolean reference:new boolean[]{true,false,true,false}){
+                    context.runOnClient(mc->HazePerformance.reference=reference);context.waitTicks(30);
+                    context.runOnClient(mc->HazePerformance.begin());context.waitTicks(60);
+                    JsonObject measurement=context.computeOnClient(mc->HazePerformance.end());measurements.add(measurement);
+                }
+                context.runOnClient(mc->HazePerformance.reference=false);
+                report.add("performance",measurements);
+                HazeMod.LOG.info("HAZE_PERFORMANCE {}",measurements);
+                context.takeScreenshot("haze-indexed-idle");
+                } finally {
+                    context.runOnClient(mc->{HazePerformance.reference=false;mc.options.enableVsync().set(oldVsync);mc.options.framerateLimit().set(oldLimit);});
+                }
+            }
             context.runOnClient(mc->{
                 mc.setWindowActive(true);tap(mc,GLFW.GLFW_KEY_SPACE);tap(mc,GLFW.GLFW_KEY_SPACE);
             });

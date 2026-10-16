@@ -17,6 +17,7 @@ import java.util.*;
 
 public final class HazeRenderer {
     private static SkinnedAsset asset;
+    private static HazeMeshRenderer[] meshes;
     private static final Map<String,RenderType> TYPES=new HashMap<>();
     private static final RenderPipeline PIPELINE=RenderPipeline.builder(RenderPipelines.ENTITY_SNIPPET)
         .withLocation(Identifier.fromNamespaceAndPath("haze","pipeline/skinned"))
@@ -31,6 +32,7 @@ public final class HazeRenderer {
     public static long renderedFrames;
     public static double currentBodyOffset;
     public static void extract(WorldExtractionContext context) {
+        long measured=HazePerformance.frame();
         Minecraft mc=Minecraft.getInstance();if(mc.level==null||mc.player==null){frames=List.of();labels=List.of();return;}
         if(HazeClient.STATES.values().stream().noneMatch(s->s.active)){frames=List.of();labels=List.of();return;}
         if(asset==null){
@@ -79,7 +81,9 @@ public final class HazeRenderer {
             }
         }
         frames=List.copyOf(actors);labels=List.copyOf(text);
+        HazePerformance.extracted(measured);
     }
+    public static void closeMeshes(){if(meshes!=null){for(var mesh:meshes)mesh.close();meshes=null;}}
     private static String chooseClip(ClientState s,Motion m,Controls c) {
         String prefix="models/heroes_staging/haze/clips/";
         if(s.flurry)return prefix+"ability_bullet_flurry";
@@ -112,6 +116,8 @@ public final class HazeRenderer {
     }
     public static void draw(WorldRenderContext context) {
         if(asset==null||frames.isEmpty())return;
+        long measured=HazePerformance.start();
+        if(meshes==null){meshes=new HazeMeshRenderer[asset.primitives.length];for(int p=0;p<meshes.length;p++)meshes[p]=new HazeMeshRenderer(asset.primitives[p]);}
         PoseStack matrices=context.matrices();MultiBufferSource consumers=context.consumers();
         Vec3 camera=context.worldState().cameraRenderState.pos;
         for(ActorFrame frame:frames) {
@@ -120,6 +126,7 @@ public final class HazeRenderer {
             matrices.mulPose(Axis.YP.rotationDegrees(-frame.yaw));
             for(int p=0;p<asset.primitives.length;p++) {
                 SkinnedAsset.Primitive primitive=asset.primitives[p];SkinnedAsset.Geometry geometry=frame.geometry[p];
+                if(!HazePerformance.reference){meshes[p].draw(type(primitive.texture()),matrices.last(),primitive,geometry,frame.light,frame.alpha);continue;}
                 VertexConsumer v=consumers.getBuffer(type(primitive.texture()));PoseStack.Pose pose=matrices.last();
                 float[] pos=geometry.position(),normal=geometry.normal(),uv=primitive.vertices().uv();
                 for(int index:primitive.indices()) {
@@ -131,7 +138,7 @@ public final class HazeRenderer {
             }
             matrices.popPose();
         }
-        if(consumers instanceof MultiBufferSource.BufferSource source) for(RenderType type:TYPES.values())source.endBatch(type);
+        if(HazePerformance.reference&&consumers instanceof MultiBufferSource.BufferSource source) for(RenderType type:TYPES.values())source.endBatch(type);
         Minecraft mc=Minecraft.getInstance();
         float partial=mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
         for(Label label:labels) {
@@ -148,8 +155,9 @@ public final class HazeRenderer {
             mc.font.drawInBatch(number,-mc.font.width(number),0,HudSource.color("offWhite"),true,matrices.last().pose(),consumers,Font.DisplayMode.NORMAL,0,15728880);
             matrices.popPose();
         }
-        if(consumers instanceof MultiBufferSource.BufferSource source)source.endBatch();
+        if(!labels.isEmpty()&&consumers instanceof MultiBufferSource.BufferSource source)source.endBatch();
         renderedFrames++;
+        HazePerformance.drawn(measured);
     }
     private static void statusImage(PoseStack matrices,MultiBufferSource buffer,String texture,float x,float y,float size,int tint,float z){
         VertexConsumer v=buffer.getBuffer(RenderTypes.entityTranslucentEmissive(Identifier.fromNamespaceAndPath("haze","retail/"+texture),false));var pose=matrices.last();

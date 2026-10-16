@@ -26,6 +26,8 @@ with zipfile.ZipFile(source) as jar:
     jar.getinfo('haze/retail/movement-animation.json')
     jar.getinfo('dev/local/haze/sim/movement/JumpImpulse.class')
     jar.getinfo('dev/local/haze/sim/movement/CapsuleMover.class')
+    jar.getinfo('dev/local/haze/client/HazeMeshRenderer.class')
+    jar.getinfo('dev/local/haze/sim/IndexedTopology.class')
 destination = root / 'dist' / source.name
 destination.parent.mkdir(exist_ok=True)
 shutil.copy2(source, destination)

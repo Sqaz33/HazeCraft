@@ -16,6 +16,7 @@ loom {
         client {
             if (project.hasProperty('lab')) {
                 vmArg '-Dhaze.lab=true'
+                if(project.hasProperty('perf'))vmArg '-Dhaze.perf=true'
                 vmArg '-Dfabric.client.gametest=true'
                 vmArg '-Dfabric.client.gametest.modid=haze'
                 vmArg '-Xmx3G'

@@ -304,3 +304,25 @@ supersedes the preceding failed wall checkpoint. Evidence: private
 Package: dist/deadlock-haze-0.3.0-movement-preview.jar, 28,312,350 bytes.
 SHA256 871e02db0c95bcb3e3c65cd7a3e63df40885c7bc1475e48ff5fb51baa1240c09.
 No retail source assets/binaries committed, no uploads or live Deadlock attachment.
+
+
+## 2026-10-16 — 0.3.1 performance fix and authorized local install
+
+User accepted movement and reported roughly 5x FPS loss. Attached a 20-second
+read-only JFR to existing Minecraft PID 28356; did not drive its controls or
+close the user's game. Main-thread samples identify full unindexed Haze mesh
+submission as the largest mod-side render cost. Replaced repeated triangles
+with compact per-material indexed meshes: 314814 -> 49632 vertex submissions,
+no triangle/UV/normal/animation reduction. Persistent native buffers are freed
+on client shutdown. Bulk scalar emission removes per-corner JOML temporaries.
+Movement controller unchanged. Added lab-only old/new renderer A/B measurement.
+
+All 78 tests pass. Both real-client runs pass the full movement/abilities/model
+scenario. Final uncapped A/B: draw 6.05 -> .88 ms, frame 8.56 -> 2.87 ms (117 ->
+348 equivalent FPS). This is a lab measurement; no claim of 7x total FPS.
+See PERFORMANCE.md for evidence, conditions, and backup locations.
+
+Built/validated/installed 0.3.1-performance one-JAR to user's explicitly requested
+TLauncher mods folder. Old 0.3.0 moved outside mods after Universal Modder backup.
+Installed SHA256 04e099a03cc8fb2cb22e626d4aa8d00f85071a8b0ff7b5bc8ff9c5d9edf107d3.
+No uploads or changes to the user's running world/settings. Restart loads new JAR.

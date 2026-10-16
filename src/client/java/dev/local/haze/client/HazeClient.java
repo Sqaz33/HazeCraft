@@ -48,6 +48,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     public static ClientState own() { Minecraft mc=Minecraft.getInstance();return mc.player==null?null:STATES.get(mc.player.getUUID()); }
     public static boolean active(UUID id) { ClientState state=STATES.get(id);return state!=null&&state.active; }
     @Override public void onInitializeClient() {
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STOPPING.register(mc->HazeRenderer.closeMeshes());
         HazeHooks.client=this;
         ClientPlayNetworking.registerGlobalReceiver(HazeProtocol.Snapshot.TYPE,(packet,context)->{
             ClientState state=new ClientState(JsonParser.parseString(packet.json()).getAsJsonObject());ClientState old=STATES.put(state.uuid,state);HazeSounds.received(old,state);
