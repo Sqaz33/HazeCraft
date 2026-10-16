@@ -39,6 +39,12 @@ public final class Abilities {
         if(smokeUntil>0 && time>=smokeUntil) breakSmoke();
     }
     public boolean smokeActive() { return smokeUntil>time; }
+    /** Debug refill preserves cast delays and running effects. */
+    public void clearCooldowns() {
+        java.util.Arrays.fill(readyAt,time);
+        smokeCharges=ranks[1]>=2?(int)p(1,"AbilityCharges"):1;
+        smokeNextRecharge=0;
+    }
     public boolean invisible() { return smokeActive() && time-smokeStart>=p(1,"InvisFadeToDuration"); }
     public double cooldown(int index){return Math.max(0,Math.max(readyAt[index],index==1&&smokeCharges<=0?smokeNextRecharge:0)-time);}
     public boolean flurry() { return time>=flurryStart && time<flurryUntil; }

@@ -351,3 +351,22 @@ Install target: user's .tlauncher/legacy/Minecraft/game/mods, version 0.3.2-loco
 Previous 0.3.1 stored outside mods in private lab backups. Direct launch reuses
 installed Fabric profile and the existing launch parameters without logging
 credentials. No external upload.
+
+
+## 2026-10-16 — 0.3.3 creative debug menu and ability cooldown toggle
+
+User requests a button-opened creative-only debug menu and then adds ability
+cooldown disabling. Explicitly no real-game test launch this turn. F8 is handled
+as a consumed keyboard event (including repeat/release), independent of Haze
+activation. DebugScreen closes when creative permission is lost and is unpaused.
+Live movement/animation/resource/FPS diagnostics, refill, local movement reset,
+stationary 10000-HP golem targets and cleanup of only the owner's tagged targets
+within 64 blocks are available. Server rechecks creative on every debug command.
+
+Cooldown toggle is authoritative server state, sent in snapshots for the label.
+It refills readyAt and smoke charges without changing time, pending cast delays,
+active effects or channel restrictions. Cleared automatically on leaving creative.
+Added a regression for refill preserving pending dagger/smoke effects and charges.
+All 79 software tests pass; no game process was launched or driven. Installed
+one-JAR 0.3.3-debug-menu in the previously authorized TLauncher mods folder,
+with 0.3.2 moved to private lab backups/tlauncher-before-0.3.3. Restart required.

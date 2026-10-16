@@ -21,6 +21,7 @@ public final class HazeActor {
     private static final ResourceKey<DamageType> BULLET=ResourceKey.create(Registries.DAMAGE_TYPE,Identifier.fromNamespaceAndPath("haze","bullet"));
     public final UUID owner;
     public boolean active;
+    public boolean debugNoCooldowns;
     public net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension;
     public final Gun gun=new Gun(DATA);
     public final Abilities abilities=new Abilities(DATA);
@@ -57,6 +58,10 @@ public final class HazeActor {
     public void accept(HazeProtocol.Input packet,ServerPlayer p) {
         if(packet.sequence()<=lastSequence || !Float.isFinite(packet.yaw()) || !Float.isFinite(packet.pitch())) return;
         lastSequence=packet.sequence();inputAge=0;
+        if(packet.command()>=HazeProtocol.DEBUG_REFILL&&packet.command()<=HazeProtocol.DEBUG_NO_COOLDOWNS) {
+            if(p.isCreative())debug(packet.command(),p);
+            return;
+        }
         if(packet.command()==HazeProtocol.SLIDE_STATE_COMMAND) {
             if(active)input=new Controls((input.held()&~Controls.SLIDING)|(packet.held()&Controls.SLIDING),
                 input.pressed(),input.yaw(),input.pitch());
@@ -67,7 +72,9 @@ public final class HazeActor {
         input=new Controls(packet.held()&0x3ffff,packet.pressed()&0x1ffff,packet.yaw(),Math.max(-89,Math.min(89,packet.pitch())));
     }
     public void tick(ServerPlayer p) {
+        if(!p.isCreative())debugNoCooldowns=false;
         if(!active) return;
+        if(debugNoCooldowns)abilities.clearCooldowns();
         if(dimension!=p.level().dimension()) { var old=p.level().getServer().getLevel(dimension);if(old!=null)clearStatuses(old);targets.clear();dimension=p.level().dimension(); }
         if(!p.isAlive() || p.isSpectator()) { toggle(p);return; }
         if(++inputAge>5) input=Controls.NONE;
@@ -95,6 +102,7 @@ public final class HazeActor {
         else if(meleeHeld>0 && abilities.time>=meleeReady) { melee(p,meleeHeld>=DATA.field("ability_melee_haze","m_flHeavyAttackRequiredHoldTime"));meleeHeld=0; }
         for(int sub=0;sub<6;sub++) {
             abilities.advance(dt/6);
+            if(debugNoCooldowns)abilities.clearCooldowns();
             if(abilities.consumeDagger()) launch(p,true,null);
             boolean flurry=abilities.flurry();
             double rate=flurry?abilities.p(3,"BonusFireRate"):0;
@@ -118,6 +126,29 @@ public final class HazeActor {
         input=input.withoutEdges();
     }
     private void setAction(String next) { action=next;actionTime=0; }
+    private void debug(int command,ServerPlayer p) {
+        switch(command) {
+            case HazeProtocol.DEBUG_REFILL -> {
+                p.setHealth(p.getMaxHealth());gun.ammo=gun.clipSize(0);gun.reloadRemaining=0;gun.bloom=gun.recoil=0;
+                abilities.clearCooldowns();
+            }
+            case HazeProtocol.DEBUG_NO_COOLDOWNS -> {
+                debugNoCooldowns=!debugNoCooldowns;if(debugNoCooldowns)abilities.clearCooldowns();
+            }
+            case HazeProtocol.DEBUG_TARGET -> {
+                var target=EntityType.IRON_GOLEM.create(p.level(),EntitySpawnReason.COMMAND);if(target==null)return;
+                Vec3 direction=p.getLookAngle().multiply(1,0,1).normalize();Vec3 pos=p.position().add(direction.scale(6));
+                target.setPos(pos);target.setNoAi(true);target.setPersistenceRequired();
+                target.getAttribute(Attributes.MAX_HEALTH).setBaseValue(10000);target.setHealth(10000);
+                target.addTag("haze_debug_"+owner);target.setCustomName(net.minecraft.network.chat.Component.literal("Haze — манекен"));target.setCustomNameVisible(true);
+                if(p.level().noCollision(target))p.level().addFreshEntity(target);
+            }
+            case HazeProtocol.DEBUG_CLEAR_TARGETS -> {
+                for(var target:p.level().getEntitiesOfClass(net.minecraft.world.entity.animal.golem.IronGolem.class,
+                    p.getBoundingBox().inflate(64),e->e.getTags().contains("haze_debug_"+owner))){targets.remove(target.getId());target.discard();}
+            }
+        }
+    }
     private void launch(ServerPlayer p,boolean dagger,Gun.Shot shot) {
         SkinnedAsset skeleton=SkinnedAsset.shared();String prefix="models/heroes_staging/haze/clips/";
         String clip=prefix+(input.down(Controls.CROUCH)?"weapon_crouch_idle":"weapon_stand_idle");
@@ -273,6 +304,7 @@ public final class HazeActor {
         JsonObject j=new JsonObject();j.addProperty("uuid",owner.toString());j.addProperty("id",p.getId());j.addProperty("active",active);
         j.addProperty("health",p.getHealth());j.addProperty("maxHealth",p.getMaxHealth());j.addProperty("ammo",gun.ammo);
         j.addProperty("reload",gun.reloadRemaining);j.addProperty("time",abilities.time);j.addProperty("recoil",gun.recoil);j.addProperty("bloom",gun.bloom);
+        j.addProperty("debugNoCooldowns",debugNoCooldowns&&p.isCreative());
         j.addProperty("smoke",abilities.smokeActive());j.addProperty("invisible",abilities.invisible());j.addProperty("flurry",abilities.flurry());
         j.addProperty("action",action);j.addProperty("actionTime",actionTime);j.addProperty("shots",gun.shotCount);
         j.addProperty("daggerTime",abilities.time-daggerStarted);

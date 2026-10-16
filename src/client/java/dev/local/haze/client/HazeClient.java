@@ -33,6 +33,18 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     private static MovementKeys movementKeys=new MovementKeys();
     private static PlayerCollision playerCollision;
     private static void clearInput() { controls=Controls.NONE;previous=0;movementKeys=new MovementKeys();movementClock.clearInputs(); }
+    public static boolean debugKey(long window,int key,int action) {
+        Minecraft mc=Minecraft.getInstance();
+        if(key!=GLFW.GLFW_KEY_F8||window!=mc.getWindow().handle()||!mc.isWindowActive()||!DebugScreen.allowed()
+            ||(mc.screen!=null&&!(mc.screen instanceof DebugScreen)))return false;
+        if(action==GLFW.GLFW_PRESS){clearInput();send(0);mc.setScreen(mc.screen instanceof DebugScreen?null:new DebugScreen());}
+        return true;
+    }
+    public static void debugResetMovement() {
+        if(!DebugScreen.allowed()||!active)return;
+        clearInput();motion=new Motion(Retail.DATA,10);motion.grounded=Minecraft.getInstance().player.onGround();
+        movementClock=new MovementClock();playerCollision=null;
+    }
     public static void keyboard(int key,int action) {
         Minecraft mc=Minecraft.getInstance();
         if(!active||!mc.isWindowActive()||mc.screen!=null||action==GLFW.GLFW_REPEAT)return;

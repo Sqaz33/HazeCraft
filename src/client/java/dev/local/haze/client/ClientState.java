@@ -7,6 +7,7 @@ public final class ClientState {
     public final UUID uuid;
     public final int entityId;
     public final boolean active,invisible,smoke,flurry,inCombat;
+    public final boolean debugNoCooldowns;
     public final double health,maxHealth,reload,time,recoil,bloom,actionTime,daggerTime,leftShot,rightShot,smokeRemaining,danceRemaining;
     public final int ammo,smokeCharges;
     public final long shots;
@@ -21,6 +22,7 @@ public final class ClientState {
         uuid=UUID.fromString(j.get("uuid").getAsString());entityId=j.get("id").getAsInt();active=j.get("active").getAsBoolean();
         invisible=j.get("invisible").getAsBoolean();smoke=j.get("smoke").getAsBoolean();flurry=j.get("flurry").getAsBoolean();
         inCombat=j.get("inCombat").getAsBoolean();
+        debugNoCooldowns=j.has("debugNoCooldowns")&&j.get("debugNoCooldowns").getAsBoolean();
         health=n(j,"health");maxHealth=n(j,"maxHealth");reload=n(j,"reload");time=n(j,"time");recoil=n(j,"recoil");bloom=n(j,"bloom");actionTime=n(j,"actionTime");
         ammo=j.get("ammo").getAsInt();shots=j.get("shots").getAsLong();action=j.get("action").getAsString();
         daggerTime=n(j,"daggerTime");
