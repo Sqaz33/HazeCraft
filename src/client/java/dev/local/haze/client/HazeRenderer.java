@@ -18,6 +18,7 @@ import java.util.*;
 public final class HazeRenderer {
     private static SkinnedAsset asset;
     private static HazeMeshRenderer[] meshes;
+    private static final Map<UUID,LocomotionPlayback> locomotion=new HashMap<>();
     private static final Map<String,RenderType> TYPES=new HashMap<>();
     private static final RenderPipeline PIPELINE=RenderPipeline.builder(RenderPipelines.ENTITY_SNIPPET)
         .withLocation(Identifier.fromNamespaceAndPath("haze","pipeline/skinned"))
@@ -33,8 +34,9 @@ public final class HazeRenderer {
     public static double currentBodyOffset;
     public static void extract(WorldExtractionContext context) {
         long measured=HazePerformance.frame();
-        Minecraft mc=Minecraft.getInstance();if(mc.level==null||mc.player==null){frames=List.of();labels=List.of();return;}
-        if(HazeClient.STATES.values().stream().noneMatch(s->s.active)){frames=List.of();labels=List.of();return;}
+        Minecraft mc=Minecraft.getInstance();if(mc.level==null||mc.player==null){frames=List.of();labels=List.of();locomotion.clear();return;}
+        if(HazeClient.STATES.values().stream().noneMatch(s->s.active)){frames=List.of();labels=List.of();locomotion.clear();return;}
+        locomotion.keySet().removeIf(id->!HazeClient.STATES.containsKey(id)||!HazeClient.STATES.get(id).active);
         if(asset==null){
             asset=SkinnedAsset.shared();
             dev.local.haze.HazeMod.LOG.info("Loaded original Haze: {} clips, {} primitives",asset.clips.size(),asset.primitives.length);
@@ -57,9 +59,9 @@ public final class HazeRenderer {
             List<SkinnedAsset.Layer> locomotionLayers=List.of();
             if(motion!=null&&clip.contains("_run_")){
                 String family=clip.substring(clip.lastIndexOf('/')+1,clip.lastIndexOf('_'));
-                var blended=LocomotionBlend.pose(asset,family,motion.velocity,entity.getYRot(partial),time);
+                var blended=locomotion.computeIfAbsent(state.uuid,id->new LocomotionPlayback()).pose(asset,family,motion,entity.getYRot(partial),partial);
                 clip=blended.clip();time=blended.time();locomotionLayers=blended.layers();
-            }
+            }else locomotion.remove(state.uuid);
             currentClip=clip;
             boolean loop=!clip.contains("dash")&&!clip.contains("mantle")&&!clip.contains("melee")&&!clip.contains("parry")&&!clip.endsWith("jump_ground")&&!clip.endsWith("jump_invis_start")&&!clip.endsWith("slide_start");
             boolean running=motion!=null&&motion.velocity.horizontal()>0.2;

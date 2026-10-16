@@ -326,3 +326,28 @@ Built/validated/installed 0.3.1-performance one-JAR to user's explicitly request
 TLauncher mods folder. Old 0.3.0 moved outside mods after Universal Modder backup.
 Installed SHA256 04e099a03cc8fb2cb22e626d4aa8d00f85071a8b0ff7b5bc8ff9c5d9edf107d3.
 No uploads or changes to the user's running world/settings. Restart loads new JAR.
+
+
+## 2026-10-16 — 0.3.2 locomotion animation timing
+
+User reports strong walking/running model jitter while other animations are fine.
+Explicit instruction: no checks before/after; fix, replace installed mod, launch
+directly without the launcher button. No tests, benchmark, QA client, screenshots,
+post-launch log validation or package validation run for this version.
+
+Code correction: regular locomotion previously sampled server snapshot time plus
+client partial tick. Packet arrival can move that clock backwards/skip ahead.
+Local LocomotionPlayback now advances an independent gait phase from the owning
+Motion clock and client partial tick. It retains phase across walk/run families
+with different clip durations instead of reinterpreting absolute server age.
+Previous/current motion velocity is interpolated on the same partial tick as
+player position/yaw, avoiding abrupt 20-Hz blend-space weight changes. Non-
+locomotion animations retain their existing playback. Physics and indexed mesh
+rendering unchanged. Playback caches clear on leaving movement/Haze/world.
+
+Build command deliberately excludes test and check tasks. This is an untested
+animation fix at the user's request; visual result is not claimed verified.
+Install target: user's .tlauncher/legacy/Minecraft/game/mods, version 0.3.2-locomotion.
+Previous 0.3.1 stored outside mods in private lab backups. Direct launch reuses
+installed Fabric profile and the existing launch parameters without logging
+credentials. No external upload.

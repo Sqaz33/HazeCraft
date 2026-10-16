@@ -36,11 +36,18 @@ public final class LocomotionBlend {
         }return null;
     }
     public static Pose pose(SkinnedAsset asset,String family,V3 velocity,double yaw,double clock){
+        return poseAtPhase(asset,family,velocity,yaw,clock/duration(asset,family));
+    }
+    public static double duration(SkinnedAsset asset,String family){
+        String reference=AnimationSource.DATA.getAsJsonObject("locomotion").getAsJsonObject(family).getAsJsonArray("clips").get(1).getAsString();
+        return asset.clips.get(reference).duration();
+    }
+    public static Pose poseAtPhase(SkinnedAsset asset,String family,V3 velocity,double yaw,double phase){
         double x=-velocity.dot(V3.look(yaw+90,0))/Retail.SOURCE_UNIT,y=velocity.dot(V3.look(yaw,0))/Retail.SOURCE_UNIT;
-        var samples=sample(family,x,y);var first=samples.getFirst();String reference=AnimationSource.DATA.getAsJsonObject("locomotion").getAsJsonObject(family).getAsJsonArray("clips").get(1).getAsString();
-        double duration=asset.clips.get(reference).duration(),baseTime=clock*asset.clips.get(first.clip).duration()/duration;
+        var samples=sample(family,x,y);var first=samples.getFirst();
+        double baseTime=phase*asset.clips.get(first.clip).duration();
         float weight=first.weight;List<SkinnedAsset.Layer> layers=new ArrayList<>();
-        for(int i=1;i<samples.size();i++){var next=samples.get(i);weight+=next.weight;layers.add(new SkinnedAsset.Layer(next.clip,clock*asset.clips.get(next.clip).duration()/duration,true,next.weight/weight,null,false));}
+        for(int i=1;i<samples.size();i++){var next=samples.get(i);weight+=next.weight;layers.add(new SkinnedAsset.Layer(next.clip,phase*asset.clips.get(next.clip).duration(),true,next.weight/weight,null,false));}
         return new Pose(first.clip,baseTime,List.copyOf(layers));
     }
 }
