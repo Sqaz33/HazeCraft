@@ -19,7 +19,7 @@ public final class HazeHud {
     private static int px(String sheet,String selector,String property){return(int)Math.round(HudSource.px(sheet,selector,property));}
     private static int color(String name){return HudSource.color(name);}
     private static Component component(String text,String face){return Component.literal(text).withStyle(Style.EMPTY.withFont(new FontDescription.Resource(Identifier.fromNamespaceAndPath("haze",face))));}
-    private static void text(GuiGraphics g,String text,float x,float y,float size,String face,int color,boolean center){
+    static void text(GuiGraphics g,String text,float x,float y,float size,String face,int color,boolean center){
         float nominal=face.equals("oracle")?32:20,factor=size/nominal;
         g.pose().pushMatrix();g.pose().translate(x,y);g.pose().scale(factor,factor);
         Component c=component(text,face);g.drawString(mc().font,c,center?-mc().font.width(c)/2:0,0,color,false);g.pose().popMatrix();
@@ -122,9 +122,9 @@ public final class HazeHud {
             else {g.fill(-8,-offset-2,8,-offset+2,0xff000000);g.fill(-7,-offset-1,7,-offset+1,0xffffffff);}
             g.pose().popMatrix();
         }
-        if(setting("citadel_crosshair_enable_clip_status")>0)arc(g,cx,cy,47,4,45,135,s.ammo/(double)Retail.DATA.weapon().get("m_iClipSize").getAsInt(),s.ammo<5?color("colorEnemy"):0xccffffff);
+        if(setting("citadel_crosshair_enable_clip_status")>0)arc(g,cx,cy,47,4,45,135,s.ammo/(double)s.clipSize,s.ammo<5?color("colorEnemy"):0xccffffff);
         if(s.flurry||sliding)image(g,"icons/icon_infinite.png",cx-12.5F,cy+80,25,25,color("offWhite"));
-        else {text(g,""+s.ammo,cx-20,cy+80,16,"radiance",0xccffffff,true);text(g," / "+Retail.DATA.weapon().get("m_iClipSize").getAsInt(),cx-8,cy+80,16,"radiance",0x1affffff,false);}
+        else {text(g,""+s.ammo,cx-20,cy+80,16,"radiance",0xccffffff,true);text(g," / "+s.clipSize,cx-8,cy+80,16,"radiance",0x1affffff,false);}
         Motion motion=HazeClient.motion;
         if(motion!=null)for(var charge:StaminaDisplay.charges(motion.stamina,(int)motion.maxStamina())) {
             // Panorama starts radial angles at the top; Java's arc helper starts at the right.
@@ -147,13 +147,18 @@ public final class HazeHud {
         int base=HudSource.DATA.getAsJsonObject("nativeUi").get("baseItemSlots").getAsInt(),flex=HudSource.DATA.getAsJsonObject("nativeUi").get("lockedItemSlots").getAsInt();
         for(int col=0;col<(base+flex)/2;col++)for(int row=0;row<2;row++){
             rounded(g,col*51+3,row*51+3,45,45,3,0x04ffffff);
+            int slot=col*2+row;
+            if(slot<s.items.size()){
+                var item=ItemCatalog.ITEMS.get(s.items.get(slot));
+                if(item!=null){int tint=item.category().endsWith("WeaponMod")?0xffce9a56:item.category().endsWith("Armor")?0xff88ba53:0xffb58bcb;g.fill(col*51+3,row*51+3,col*51+48,row*51+48,tint);ShopScreen.icon(g,item,col*51+3,row*51+3,45);}
+            }
             if(col>=base/2)image(g,"hud/shop_ability_upgrades_lock_icon_png.png",col*51+16.5F,row*51+14.25F,18,22.5F,0x26ffffff);
         }
         g.pose().popMatrix();
         image(g,"hud/core/spirit_jar_frame_png.png",left+30,875,60,60,color("offWhite"));
         text(g,"1",left+62.5F,896,28,"mono",color("offWhite"),true);
         image(g,"hud/icons/icon_soul.png",left+88,889,20,36,color("shardColor"));
-        text(g,"0",left+114,889,32,"oracle",color("blueAPTextColor"),false);
+        text(g,"∞",left+114,889,32,"oracle",color("blueAPTextColor"),false);
         text(g,HudSource.loc("Citadel_Hero_Stats_Souls").toUpperCase(Locale.ROOT),left+145,909,14,"radiance",0x66ffefd7,false);
     }
     private static void channel(GuiGraphics g,ClientState s,float width){

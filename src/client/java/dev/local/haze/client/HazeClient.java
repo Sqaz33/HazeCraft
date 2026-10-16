@@ -57,6 +57,14 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         };
         if(bit!=0)movementKeys.event(bit,action==GLFW.GLFW_PRESS);
     }
+    public static boolean shopKey(long window,int key,int action){
+        var mc=Minecraft.getInstance();
+        if(!active||key!=GLFW.GLFW_KEY_B||window!=mc.getWindow().handle()||!mc.isWindowActive()||(mc.screen!=null&&!(mc.screen instanceof ShopScreen)))return false;
+        if(action==GLFW.GLFW_PRESS){clearInput();send(0);mc.setScreen(mc.screen instanceof ShopScreen?null:new ShopScreen());}return true;
+    }
+    public static void shop(String item,boolean sell){
+        if(active&&ClientPlayNetworking.canSend(HazeProtocol.Shop.TYPE))ClientPlayNetworking.send(new HazeProtocol.Shop(item,sell));
+    }
     public static boolean ownsMeleeKey(long window,int key){
         var mc=Minecraft.getInstance();
         return active&&key==GLFW.GLFW_KEY_Q&&window==mc.getWindow().handle()&&mc.isWindowActive()&&mc.screen==null;
@@ -118,12 +126,12 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         if(alt)for(int i=0;i<4;i++)if(key(window,GLFW.GLFW_KEY_1+i))upgrades|=1<<i;
         for(int i=0;i<4;i++)if((upgrades&(1<<i))!=0&&(previousUpgradeKeys&(1<<i))==0)send(10+i);
         previousUpgradeKeys=upgrades;
-        if(mc.screen!=null&&!(mc.screen instanceof UpgradeScreen)) { clearInput();send(0);return; }
+        if(mc.screen!=null&&!(mc.screen instanceof UpgradeScreen)&&!(mc.screen instanceof ShopScreen)) { clearInput();send(0);return; }
         int held=0;
         int[] keys={GLFW.GLFW_KEY_W,GLFW.GLFW_KEY_S,GLFW.GLFW_KEY_A,GLFW.GLFW_KEY_D,GLFW.GLFW_KEY_SPACE,GLFW.GLFW_KEY_LEFT_SHIFT,GLFW.GLFW_KEY_LEFT_CONTROL};
         for(int i=0;i<keys.length;i++)if(key(window,keys[i]))held|=1<<i;
-        if(!alt&&button(window,GLFW.GLFW_MOUSE_BUTTON_LEFT))held|=Controls.FIRE;
-        if(!alt&&button(window,GLFW.GLFW_MOUSE_BUTTON_RIGHT))held|=Controls.AIM;
+        if(mc.screen==null&&!alt&&button(window,GLFW.GLFW_MOUSE_BUTTON_LEFT))held|=Controls.FIRE;
+        if(mc.screen==null&&!alt&&button(window,GLFW.GLFW_MOUSE_BUTTON_RIGHT))held|=Controls.AIM;
         if(key(window,GLFW.GLFW_KEY_R))held|=Controls.RELOAD;
         for(int i=0;i<4;i++)if(!alt&&key(window,GLFW.GLFW_KEY_1+i))held|=Controls.DAGGER<<i;
         if(key(window,GLFW.GLFW_KEY_Q))held|=Controls.MELEE;
@@ -151,6 +159,11 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     @Override public boolean travel(Player player) {
         if(!(player instanceof LocalPlayer p)||!active||motion==null||p.isPassenger())return false;
         ClientState state=own();
+        motion.itemMoveSpeed=0;motion.itemSprintSpeed=0;motion.itemStamina=0;motion.itemStaminaRegenReduction=0;
+        if(state!=null){
+            var inventory=state.itemInventory;
+            motion.itemMoveSpeed=inventory.stat("BonusMoveSpeed");motion.itemSprintSpeed=inventory.stat("BonusSprintSpeed");motion.itemStamina=inventory.stat("Stamina");motion.itemStaminaRegenReduction=inventory.reduction("StaminaCooldownReduction");
+        }
         double bonus=state!=null&&state.smoke?Retail.DATA.prop("ability_smoke_bomb","InvisMoveSpeedMod",state.ranks[1]):0;
         double cap=state!=null&&state.flurry?Retail.DATA.prop("ability_bullet_flurry","ChannelMoveSpeed",state.ranks[3]):-1;
         if(playerCollision==null||playerCollision.p!=p||playerCollision.owner!=motion)playerCollision=new PlayerCollision(p,motion);

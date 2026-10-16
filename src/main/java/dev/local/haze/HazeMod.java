@@ -16,6 +16,7 @@ public final class HazeMod implements ModInitializer {
     @Override public void onInitialize() {
         PayloadTypeRegistry.playC2S().register(HazeProtocol.Input.TYPE,HazeProtocol.Input.CODEC);
         PayloadTypeRegistry.playC2S().register(HazeProtocol.Debug.TYPE,HazeProtocol.Debug.CODEC);
+        PayloadTypeRegistry.playC2S().register(HazeProtocol.Shop.TYPE,HazeProtocol.Shop.CODEC);
         PayloadTypeRegistry.playS2C().register(HazeProtocol.Snapshot.TYPE,HazeProtocol.Snapshot.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(HazeProtocol.Input.TYPE,(packet,context)->{
             ServerPlayer p=context.player();ACTORS.computeIfAbsent(p.getUUID(),HazeActor::new).accept(packet,p);
@@ -23,6 +24,9 @@ public final class HazeMod implements ModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(HazeProtocol.Debug.TYPE,(packet,context)->{
             ServerPlayer p=context.player();HazeActor actor=ACTORS.get(p.getUUID());
             if(actor!=null)actor.debug(packet,p);
+        });
+        ServerPlayNetworking.registerGlobalReceiver(HazeProtocol.Shop.TYPE,(packet,context)->{
+            var actor=ACTORS.get(context.player().getUUID());if(actor!=null&&actor.active)actor.shop(packet,context.player());
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler,server)->{HazeActor a=ACTORS.remove(handler.player.getUUID());if(a!=null&&a.active)a.toggle(handler.player);});
         ServerTickEvents.END_SERVER_TICK.register(server->{

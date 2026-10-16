@@ -6,9 +6,17 @@ public final class Abilities {
     public final double[] readyAt=new double[4];
     public double time, smokeStart=-100, smokeUntil, buffUntil, flurryStart, flurryUntil, daggerAt=-1;
     public int smokeCharges=1;
+    public double itemSpirit,itemWeaponPercent,itemCooldownReduction,itemDurationPercent,itemRangePercent,itemRadiusPercent;
     private double smokeNextRecharge;
     public Abilities(Retail data) { this.data=data; }
-    public double p(int index,String name) { return data.prop(Retail.SIGNATURES[index],name,ranks[index]); }
+    public double p(int index,String name) {
+        double value=data.prop(Retail.SIGNATURES[index],name,ranks[index],itemSpirit,itemWeaponPercent);
+        if(name.equals("AbilityCooldown"))value*=1-itemCooldownReduction;
+        if(name.equals("AbilityDuration")||name.equals("SleepDuration"))value*=1+itemDurationPercent/100;
+        if(name.equals("AbilityCastRange"))value*=1+itemRangePercent/100;
+        if(name.equals("Radius")||name.equals("RadiusMin"))value*=1+itemRadiusPercent/100;
+        return value;
+    }
     public boolean upgrade(int index) {
         if(index<0 || index>=4 || ranks[index]>=3) return false;
         ranks[index]++;

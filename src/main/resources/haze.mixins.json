@@ -1,1 +1,1 @@
-{"required":true,"package":"dev.local.haze.mixin","compatibilityLevel":"JAVA_21","mixins":["PlayerMixin","AvatarMixin","MobMixin","EntitySoundMixin","LivingMotionMixin","EntityMovementMixin","ServerMovementMixin"],"injectors":{"defaultRequire":1}}
+{"required":true,"package":"dev.local.haze.mixin","compatibilityLevel":"JAVA_21","mixins":["PlayerMixin","AvatarMixin","MobMixin","EntitySoundMixin","LivingMotionMixin","EntityMovementMixin","ServerMovementMixin","HealthRangeMixin"],"injectors":{"defaultRequire":1}}

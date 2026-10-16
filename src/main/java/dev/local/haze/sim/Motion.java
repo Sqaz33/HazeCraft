@@ -25,6 +25,7 @@ public final class Motion {
     private double staminaRegenMultiplier;
     private final JsonObject dashCurve;
     public final MeleeController melee;
+    public double itemMoveSpeed,itemSprintSpeed,itemStamina,itemStaminaRegenReduction;
     private static final double UNIT=0.0254;
     public V3 velocity=V3.ZERO;
     public Mode mode=Mode.IDLE;
@@ -68,7 +69,7 @@ public final class Motion {
     private double f(CharacterMovementProfile.Role role,String key) { return profile.field(role,key); }
     private double p(CharacterMovementProfile.Role role,String key) { return profile.baseProperty(role,key); }
     private double n(String key) { Double value=nativeValues.get(key);if(value==null)throw new IllegalArgumentException("Missing movement rule: "+key);return value; }
-    public double maxStamina() { return profile.stat("EStamina"); }
+    public double maxStamina() { return profile.stat("EStamina")+itemStamina; }
     public void setStaminaRegenMultiplier(double value){
         if(!Double.isFinite(value)||value<0)throw new IllegalArgumentException("Stamina regeneration multiplier");
         staminaRegenMultiplier=value;
@@ -84,7 +85,7 @@ public final class Motion {
         regenPenalties.removeIf(end->time>=end);
         PercentageStack regen=new PercentageStack();
         for(double ignored:regenPenalties)regen.add((float)p(JUMP,"StaminaRegenReduction"));
-        stamina=Math.min(maxStamina(),stamina+profile.stat("EStaminaRegenPerSecond")*staminaRegenMultiplier*regen.multiplier()*dt);
+        stamina=Math.min(maxStamina(),stamina+profile.stat("EStaminaRegenPerSecond")*staminaRegenMultiplier*regen.multiplier()*dt/Math.max(.05,1-itemStaminaRegenReduction));
         if(grounded) { lastGroundTime=time;airJumpUsed=false;airDashUsed=false;downDashUsed=false;wallJumps=0; }
         if(grounded&&time-groundedSince>f(SLIDE,"m_flAirDragResetTime"))slideJumps=0;
         V3 contact=world.wallContact();
@@ -120,7 +121,7 @@ public final class Motion {
         }
         V3 wish=input.wish();
         boolean sprint=!inCombat&&wish.length()>0&&!input.down(Controls.CROUCH)&&!input.down(Controls.AIM)&&!input.down(Controls.FIRE)&&!input.down(Controls.MELEE)&&capSpeed<0;
-        sprintBonus=sprint?Math.min(profile.stat("ESprintSpeed"),sprintBonus+f(SPRINT,"m_flSprintAccMS")*dt):0;
+        sprintBonus=sprint?Math.min(profile.stat("ESprintSpeed")+itemSprintSpeed,sprintBonus+f(SPRINT,"m_flSprintAccMS")*dt):0;
         if(input.edge(Controls.DOWN_DASH) && !grounded && !downDashUsed && stamina>=.5 && mode!=Mode.MANTLE) {
             stamina-=.5;downDashUsed=true;mode=Mode.AIR;
             velocity=velocity.withY(-f(DASH,"m_flDownwardAirDashSpeed")*UNIT);postDashTime=-100;
@@ -188,7 +189,7 @@ public final class Motion {
         boolean airDashCommand=airDashing||airDashFinish;
         double airSpeedOverride=airDashing?dashDistance/dashDuration*(1+(f(DASH,"m_flAirDashEndVelocityScale")-1)*Math.clamp((time-dashStart)/dashDuration,0,1)):0;
         if(airDashCommand)wish=dashDirection;
-        double max=profile.stat("EMaxMoveSpeed")+bonusSpeed+sprintBonus;
+        double max=profile.stat("EMaxMoveSpeed")+bonusSpeed+sprintBonus+itemMoveSpeed;
         if(input.down(Controls.CROUCH) && grounded && mode!=Mode.SLIDE) {
             if(velocity.horizontal()>=f(SLIDE,"m_flMinActivationSpeed")*UNIT) { mode=Mode.SLIDE;slideStart=time;dashSlide=false; }
             else { mode=Mode.CROUCH;max=profile.stat("ECrouchSpeed")+bonusSpeed; }

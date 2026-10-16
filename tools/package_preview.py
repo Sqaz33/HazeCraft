@@ -44,6 +44,10 @@ with zipfile.ZipFile(source) as jar:
     jar.getinfo('dev/local/haze/sim/movement/MeleeVisuals.class')
     attacks=json.loads(jar.read('haze/retail/profile.json'))['abilities']['ability_melee_haze']['m_mapAttacks']
     assert all('m_flMovementAcc' in a and 'm_flAttackStateTime' in a for a in attacks.values())
+    jar.getinfo('dev/local/haze/client/ShopScreen.class')
+    catalog=json.loads(jar.read('haze/retail/items.json'))
+    assert len(catalog['items'])==156
+    for item in catalog['items']:jar.getinfo('assets/haze/retail/'+item['icon'])
 destination = root / 'dist' / source.name
 destination.parent.mkdir(exist_ok=True)
 shutil.copy2(source, destination)

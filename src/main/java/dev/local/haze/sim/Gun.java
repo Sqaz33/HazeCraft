@@ -12,6 +12,7 @@ public final class Gun {
     public int ammo;
     public double reloadRemaining, bloom, recoil, clock, nextShot;
     public long shotCount;
+    public double itemClipPercent,itemClipFlat,itemWeaponPercent,itemReloadPercent,itemRangePercent;
     private final SplittableRandom random;
     public record Shot(double time, double yawOffset, double pitchOffset, double damage) {}
     public Gun(Retail data) {
@@ -19,9 +20,9 @@ public final class Gun {
         random=new SplittableRandom((long)f("m_nRecoilSeed"));
     }
     public double f(String key) { return Retail.number(w.get(key)); }
-    public int clipSize(double spirit) { return (int)Math.floor(f("m_iClipSize")+spirit*0.5); }
+    public int clipSize(double spirit) { return Math.max(1,(int)Math.floor((f("m_iClipSize")+spirit*0.5)*(1+itemClipPercent/100)+itemClipFlat)); }
     public void reload(double spirit) {
-        if (reloadRemaining<=0 && ammo<clipSize(spirit)) reloadRemaining=f("m_reloadDuration");
+        if (reloadRemaining<=0 && ammo<clipSize(spirit)) reloadRemaining=f("m_reloadDuration")/Math.max(.1,1+itemReloadPercent/100);
     }
     public List<Shot> advance(double dt, boolean fire, boolean aim, boolean infiniteClip, boolean sliding, double fireRateBonus, double damageBonus, double spirit) {
         if (dt<=0 || dt>0.1) throw new IllegalArgumentException("Invalid weapon dt");
@@ -45,7 +46,7 @@ public final class Gun {
             double radius=Math.sqrt(random.nextDouble())*spread,angle=random.nextDouble()*Math.PI*2;
             double yaw=Math.cos(angle)*radius,pitch=Math.sin(angle)*radius;
             double kick=f("m_flVerticalPunch")*(sliding?0.5:1);
-            shots.add(new Shot(nextShot,yaw,pitch,f("m_flBulletDamage")+damageBonus));
+            shots.add(new Shot(nextShot,yaw,pitch,f("m_flBulletDamage")*(1+itemWeaponPercent/100)+damageBonus));
             if (!infiniteClip && !sliding) ammo--;
             bloom+=f("m_flShootSpreadPenaltyPerShot"); recoil+=kick; shotCount++;
             nextShot+=cycle;
@@ -54,7 +55,7 @@ public final class Gun {
         return shots;
     }
     public double damageAt(double meters) {
-        double start=f("m_flDamageFalloffStartRange")*Retail.SOURCE_UNIT,end=f("m_flDamageFalloffEndRange")*Retail.SOURCE_UNIT;
+        double start=f("m_flDamageFalloffStartRange")*Retail.SOURCE_UNIT*(1+itemRangePercent/100),end=f("m_flDamageFalloffEndRange")*Retail.SOURCE_UNIT*(1+itemRangePercent/100);
         double t=Math.max(0,Math.min(1,(meters-start)/(end-start)));
         return f("m_flDamageFalloffStartScale")+(f("m_flDamageFalloffEndScale")-f("m_flDamageFalloffStartScale"))*t;
     }

@@ -9,6 +9,11 @@ public final class HazeProtocol {
     public static final int VERSION=1;
     public static final int SLIDE_STATE_COMMAND=20;
     public static final int DEBUG_REFILL=100,DEBUG_TARGET=101,DEBUG_CLEAR_TARGETS=102,DEBUG_NO_COOLDOWNS=103;
+    public record Shop(String item,boolean sell) implements CustomPacketPayload {
+        public static final Type<Shop> TYPE=new Type<>(Identifier.fromNamespaceAndPath("haze","shop_v1"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,Shop> CODEC=StreamCodec.of((b,p)->{b.writeUtf(p.item,128);b.writeBoolean(p.sell);},b->new Shop(b.readUtf(128),b.readBoolean()));
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
     public record Debug(int action,int value) implements CustomPacketPayload {
         public static final Type<Debug> TYPE=new Type<>(Identifier.fromNamespaceAndPath("haze","debug_v1"));
         public static final StreamCodec<RegistryFriendlyByteBuf,Debug> CODEC=StreamCodec.of((b,p)->{b.writeVarInt(p.action);b.writeVarInt(p.value);},b->new Debug(b.readVarInt(),b.readVarInt()));

@@ -1,6 +1,8 @@
 package dev.local.haze.client;
 
 import com.google.gson.*;
+import dev.local.haze.sim.Retail;
+import dev.local.haze.sim.ItemInventory;
 import java.util.*;
 
 public final class ClientState {
@@ -14,6 +16,10 @@ public final class ClientState {
     public final double meleeAge,meleeChargeAge,meleeCooldown,meleeStrikeAge;
     public final float meleeYaw;
     public final long meleeSerial,meleeStrikeSerial;
+    public final List<String> items;
+    public final int itemSlots,clipSize;
+    public final String shopMessage;
+    public final ItemInventory itemInventory;
     public final double health,maxHealth,reload,time,recoil,bloom,actionTime,daggerTime,leftShot,rightShot,smokeRemaining,danceRemaining;
     public final int ammo,smokeCharges;
     public final long shots;
@@ -32,6 +38,10 @@ public final class ClientState {
         debugInfiniteAmmo=j.has("debugInfiniteAmmo")&&j.get("debugInfiniteAmmo").getAsBoolean();
         debugLockHealth=j.has("debugLockHealth")&&j.get("debugLockHealth").getAsBoolean();
         debugTarget=j.has("debugTarget")?j.getAsJsonObject("debugTarget"):null;
+        List<String> ownedItems=new ArrayList<>();if(j.has("items"))for(var id:j.getAsJsonArray("items"))ownedItems.add(id.getAsString());items=List.copyOf(ownedItems);
+        itemSlots=j.has("itemSlots")?j.get("itemSlots").getAsInt():8;clipSize=j.has("clipSize")?j.get("clipSize").getAsInt():Retail.DATA.weapon().get("m_iClipSize").getAsInt();
+        shopMessage=j.has("shopMessage")?j.get("shopMessage").getAsString():"";
+        itemInventory=new ItemInventory();itemInventory.capacity=itemSlots;for(String id:items)itemInventory.buy(id);
         meleePhase=j.has("meleePhase")?j.get("meleePhase").getAsString():"NONE";meleeType=j.has("meleeType")?j.get("meleeType").getAsString():"NONE";
         meleeAge=j.has("meleeAge")?n(j,"meleeAge"):0;meleeChargeAge=j.has("meleeChargeAge")?n(j,"meleeChargeAge"):0;
         meleeCooldown=j.has("meleeCooldown")?n(j,"meleeCooldown"):0;meleeYaw=j.has("meleeYaw")?j.get("meleeYaw").getAsFloat():0;
