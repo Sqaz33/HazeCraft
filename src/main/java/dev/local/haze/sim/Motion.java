@@ -17,12 +17,14 @@ public final class Motion {
         default V3 mantle(V3 direction,double maxHeight) { return null; }
         default V3 wallContact() { return V3.ZERO; }
         default boolean canStand(){return true;}
+        default boolean meleeContact(V3 direction,double distance){return false;}
     }
     private final CharacterMovementProfile profile;
     private final Map<String,Double> nativeValues;
     private final double shootScale,zoomScale;
     private double staminaRegenMultiplier;
     private final JsonObject dashCurve;
+    public final MeleeController melee;
     private static final double UNIT=0.0254;
     public V3 velocity=V3.ZERO;
     public Mode mode=Mode.IDLE;
@@ -61,6 +63,7 @@ public final class Motion {
         this.profile=profile;this.nativeValues=Map.copyOf(nativeValues);this.shootScale=shootScale;this.zoomScale=zoomScale;
         this.staminaRegenMultiplier=staminaRegenMultiplier;
         dashCurve=profile.groundDashCurve().getAsJsonObject();stamina=profile.stat("EStamina");
+        melee=new MeleeController(profile);
     }
     private double f(CharacterMovementProfile.Role role,String key) { return profile.field(role,key); }
     private double p(CharacterMovementProfile.Role role,String key) { return profile.baseProperty(role,key); }
@@ -86,6 +89,19 @@ public final class Motion {
         if(grounded&&time-groundedSince>f(SLIDE,"m_flAirDragResetTime"))slideJumps=0;
         V3 contact=world.wallContact();
         if(contact.length()>0) { wall=true;wallNormal=contact.normalized(); }
+        melee.step(dt,input,grounded,mode==Mode.SLIDE,mode!=Mode.MANTLE&&capSpeed<0&&time>=parryUntil);
+        if(input.edge(Controls.PARRY))melee.cancel();
+        if(melee.locksMovement()&&!(melee.phase==MeleeController.Phase.GROUND_DASH&&!grounded)){
+            mode=Mode.MELEE;sprintBonus=0;ducked=!world.canStand();
+            if(dt==0)return;
+            if(melee.dashing()&&world.meleeContact(melee.direction,f(MELEE,"m_flCollisionDistance")*UNIT))melee.strike();
+            velocity=melee.movement(velocity,dt);
+            if(melee.dashing()&&melee.phase!=MeleeController.Phase.AIR_DASH)gravity(dt);
+            var result=collide(world,velocity.mul(dt),false,dt);
+            if(melee.dashing()&&result.wall()){melee.strike();velocity=V3.ZERO;}
+            return;
+        }
+        if(mode==Mode.MELEE)mode=grounded?Mode.RUN:Mode.AIR;
         if(input.edge(Controls.PARRY) && time>=parryReady) {
             parryUntil=time+f(PARRY,"m_flActiveTime");
             parryReady=time+p(PARRY,"AbilityCooldown");
@@ -205,6 +221,8 @@ public final class Motion {
         if(time-getupStart<=profile.definition(SLIDE).getAsJsonObject("m_GetupSpeedCurve").getAsJsonArray("m_vDomainMaxs").get(0).getAsDouble())
             max*=JumpImpulse.bonusScale((float)Curve.sample(profile.definition(SLIDE).getAsJsonObject("m_GetupSpeedCurve"),time-getupStart));
         if(capSpeed>=0) max=Math.min(max,capSpeed);
+        if(melee.phase==MeleeController.Phase.CHARGING)max=Math.min(max,melee.chargeMoveSpeed());
+        max=Math.max(0,max+melee.speedBonus());
         if(input.down(Controls.FIRE)) max*=shootScale;
         if(input.down(Controls.AIM)) max*=zoomScale;
         if(time<parryUntil) max*=p(PARRY,"ParryMoveSpeed")/100;

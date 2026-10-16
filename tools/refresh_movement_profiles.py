@@ -79,6 +79,9 @@ for name,hero in heroes.items():
   if record.get('_class')=='citadel_ability_mantle':
    for mantle in record['m_vecMantleTypes']:
     for field,proof in defaults['MantleType_t'].items():mantle.setdefault(field,proof['value'])
+  if record.get('_class')=='citadel_ability_hold_melee':
+   for attack in record.get('m_mapAttacks',{}).values():
+    for field,proof in defaults.get('AttackData_t',{}).items():attack.setdefault(field,proof['value'])
   definitions[key]=record
  profiles[name]=dict(sourceHero=name,sourceBuild=source['build'],startingStats=hero['m_mapStartingStats'],movementBindings=selected,
                      groundDashPositionCurve=hero.get('m_groundDashPositionCurve'),unresolvedBindings=[v for v in selected.values() if v not in abilities])

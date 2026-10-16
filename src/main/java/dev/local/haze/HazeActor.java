@@ -2,6 +2,7 @@ package dev.local.haze;
 
 import com.google.gson.*;
 import dev.local.haze.sim.*;
+import dev.local.haze.sim.movement.MeleeController;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
@@ -28,13 +29,14 @@ public final class HazeActor {
     public net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension;
     public final Gun gun=new Gun(DATA);
     public final Abilities abilities=new Abilities(DATA);
+    public final MeleeController melee=new MeleeController(DATA.movementProfile());
     public final Map<Integer,Fixation> targets=new HashMap<>();
     public final List<Projectile> projectiles=new ArrayList<>();
     public final List<Trace> traces=new ArrayList<>();
     private long nextProjectile;
     public Controls input=Controls.NONE;
     public int lastSequence=-1,inputAge;
-    private double oldMaxHealth,oldHealth,meleeHeld,meleeReady,parryReady,parryUntil,combatUntil;
+    private double oldMaxHealth,oldHealth,parryReady,parryUntil,combatUntil;
     private boolean oldFlying;
     public String action="idle";
     public double actionTime;
@@ -52,6 +54,7 @@ public final class HazeActor {
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(DATA.stat("EMaxHealth"));p.setHealth((float)DATA.stat("EMaxHealth"));
         } else {
             debugLockHealth=false;
+            melee.cancel();
             p.getAbilities().flying=oldFlying&&p.getAbilities().mayfly;p.onUpdateAbilities();
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(oldMaxHealth);if(p.isAlive())p.setHealth((float)Math.min(oldHealth,p.getMaxHealth()));
             p.setInvisible(false);input=Controls.NONE;projectiles.clear();traces.clear();
@@ -102,17 +105,21 @@ public final class HazeActor {
             parryReady=abilities.time+DATA.prop("citadel_ability_melee_parry","AbilityCooldown",0);
             parryUntil=abilities.time+DATA.field("citadel_ability_melee_parry","m_flActiveTime");setAction("parry");
         }
-        if(input.down(Controls.MELEE)) meleeHeld+=dt;
-        else if(meleeHeld>0 && abilities.time>=meleeReady) { melee(p,meleeHeld>=DATA.field("ability_melee_haze","m_flHeavyAttackRequiredHoldTime"));meleeHeld=0; }
         for(int sub=0;sub<6;sub++) {
             abilities.advance(dt/6);
+            long strikeBefore=melee.strikeSerial,actionBefore=melee.serial;
+            melee.step(dt/6,input,p.onGround(),input.down(Controls.SLIDING)&&input.down(Controls.CROUCH),!abilities.flurry()&&abilities.time>=parryUntil);
+            if(input.edge(Controls.PARRY))melee.cancel();
+            if(melee.serial!=actionBefore){abilities.breakSmoke();setAction("melee_charge");}
+            if(melee.dashing()&&meleeContact(p))melee.strike();
+            if(melee.strikeSerial!=strikeBefore)melee(p);
             if(debugNoCooldowns)abilities.clearCooldowns();
             if(abilities.consumeDagger()) launch(p,true,null);
             boolean flurry=abilities.flurry();
             double rate=flurry?abilities.p(3,"BonusFireRate"):0;
             double bonus=flurry?abilities.p(3,"WeaponDamageBonus"):0;
             if(input.edge(Controls.RELOAD)) { gun.reload(0);setAction("reload"); }
-            boolean fire=input.down(Controls.FIRE) && abilities.daggerAt<0 && meleeHeld<=0 && abilities.time>=parryUntil;
+            boolean fire=input.down(Controls.FIRE) && abilities.daggerAt<0 && !melee.active() && abilities.time>=parryUntil;
             boolean slide=input.down(Controls.SLIDING)&&input.down(Controls.CROUCH);
             for(Gun.Shot shot:gun.advance(dt/6,fire||flurry,input.down(Controls.AIM),flurry||debugInfiniteAmmo,slide,rate,bonus,0)) {
                 if(gun.shotCount%2==0)lastLeftShot=abilities.time;else lastRightShot=abilities.time;
@@ -145,7 +152,7 @@ public final class HazeActor {
             case NO_COOLDOWNS -> {debugNoCooldowns=!debugNoCooldowns;if(debugNoCooldowns)abilities.clearCooldowns();}
             case CLEAR_COOLDOWNS -> abilities.clearCooldowns();
             case ABILITY_RANK -> {if(value>=0&&value<16)abilities.debugRank(DebugAction.abilityIndex(value),DebugAction.abilityRank(value));}
-            case STOP_ABILITIES -> {abilities.debugStop();projectiles.removeIf(Projectile::dagger);daggerStarted=-100;p.setInvisible(false);setAction("idle");}
+            case STOP_ABILITIES -> {abilities.debugStop();melee.cancel();projectiles.removeIf(Projectile::dagger);daggerStarted=-100;p.setInvisible(false);setAction("idle");}
             case INFINITE_AMMO -> {debugInfiniteAmmo=!debugInfiniteAmmo;if(debugInfiniteAmmo)gun.reloadRemaining=0;}
             case AMMO -> {gun.ammo=DebugAction.bounded(value,0,gun.clipSize(0));gun.reloadRemaining=0;}
             case RELOAD -> {gun.reload(0);if(gun.reloadRemaining>0)setAction("reload");}
@@ -323,20 +330,28 @@ public final class HazeActor {
             traces.add(new Trace(id,abilities.time,origin,origin,false));
         }
     }
-    private void melee(ServerPlayer p,boolean heavy) {
+    private boolean meleeContact(ServerPlayer p){
+        double reach=DATA.field("ability_melee_haze","m_flCollisionDistance")*Retail.SOURCE_UNIT;
+        Vec3 start=p.getEyePosition().add(0,-p.getEyeHeight()*.4,0),end=start.add(mc(melee.direction.mul(reach)));
+        if(p.level().clip(new ClipContext(start,end,ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,p)).getType()!=HitResult.Type.MISS)return true;
+        return !p.level().getEntitiesOfClass(Mob.class,new AABB(start,end).inflate(.35),e->e.isAlive()&&p.hasLineOfSight(e)&&e.getBoundingBox().inflate(.35).clip(start,end).isPresent()).isEmpty();
+    }
+    private void melee(ServerPlayer p) {
+        boolean heavy=melee.heavy();
         abilities.breakSmoke();setAction(heavy?"melee_heavy":"melee_light");
         double range=DATA.prop("ability_melee_haze","MeleeAttackLength",0);
-        V3 look=V3.look(input.yaw(),0);
+        V3 look=melee.direction;
         double cos=Math.cos(Math.toRadians(DATA.prop("ability_melee_haze","MeleeHalfAngle",0)));boolean hit=false;
         for(LivingEntity e:p.level().getEntitiesOfClass(LivingEntity.class,p.getBoundingBox().inflate(range),e->e!=p && e.isAlive() && !(e instanceof Player))) {
-            if(p.distanceTo(e)<=range && look.dot(of(e.position()).sub(of(p.position())).flat().normalized())>=cos && p.hasLineOfSight(e)) {
+            V3 offset=of(e.position()).add(new V3(0,e.getBbHeight()*.5,0)).sub(of(p.position()).add(new V3(0,p.getBbHeight()*.5,0)));
+            V3 targetDirection=melee.type==MeleeController.Type.HEAVY_AIR?offset.normalized():offset.flat().normalized();
+            if(p.distanceTo(e)<=range && look.dot(targetDirection)>=cos && p.hasLineOfSight(e)) {
                 hurt(p,e,DATA.stat(heavy?"EHeavyMeleeDamage":"ELightMeleeDamage"),false);
                 hit=true;
-                if(heavy) e.setDeltaMovement(e.getDeltaMovement().add(look.x(),0,look.z()));
+                if(heavy&&melee.knockUp()>0)e.setDeltaMovement(e.getDeltaMovement().add(0,melee.knockUp()*.05,0));
             }
         }
-        JsonObject attack=DATA.ability("ability_melee_haze").getAsJsonObject("m_mapAttacks").getAsJsonObject(heavy?"EAttackType_Heavy":"EAttackType_Light");
-        meleeReady=abilities.time+Retail.number(attack.get(hit?"m_flCooldownOnHit":"m_flCooldownOnMiss"));
+        melee.confirmedHit(hit);
     }
     private void applyStatuses(ServerPlayer p) {
         Iterator<Map.Entry<Integer,Fixation>> it=targets.entrySet().iterator();
@@ -386,6 +401,10 @@ public final class HazeActor {
         }
         j.addProperty("smoke",abilities.smokeActive());j.addProperty("invisible",abilities.invisible());j.addProperty("flurry",abilities.flurry());
         j.addProperty("action",action);j.addProperty("actionTime",actionTime);j.addProperty("shots",gun.shotCount);
+        j.addProperty("meleePhase",melee.phase.name());j.addProperty("meleeType",melee.type.name());j.addProperty("meleeAge",melee.age());
+        j.addProperty("meleeChargeAge",melee.chargeAge());j.addProperty("meleeCooldown",melee.cooldown());
+        j.addProperty("meleeStrikeAge",melee.time-melee.strikeTime);
+        j.addProperty("meleeYaw",melee.yaw);j.addProperty("meleeSerial",melee.serial);j.addProperty("meleeStrikeSerial",melee.strikeSerial);
         j.addProperty("daggerTime",abilities.time-daggerStarted);
         j.addProperty("leftShot",lastLeftShot);j.addProperty("rightShot",lastRightShot);
         j.addProperty("inCombat",inCombat());

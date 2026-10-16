@@ -57,6 +57,10 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         };
         if(bit!=0)movementKeys.event(bit,action==GLFW.GLFW_PRESS);
     }
+    public static boolean ownsMeleeKey(long window,int key){
+        var mc=Minecraft.getInstance();
+        return active&&key==GLFW.GLFW_KEY_Q&&window==mc.getWindow().handle()&&mc.isWindowActive()&&mc.screen==null;
+    }
     public static ClientState own() { Minecraft mc=Minecraft.getInstance();return mc.player==null?null:STATES.get(mc.player.getUUID()); }
     public static boolean active(UUID id) { ClientState state=STATES.get(id);return state!=null&&state.active; }
     @Override public void onInitializeClient() {
@@ -66,6 +70,9 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
             ClientState state=new ClientState(JsonParser.parseString(packet.json()).getAsJsonObject());ClientState old=STATES.put(state.uuid,state);HazeSounds.received(old,state);
             Minecraft mc=context.client();
             if(mc.player!=null && mc.player.getUUID().equals(state.uuid)) {
+                if(motion!=null&&old!=null&&state.meleeStrikeSerial!=old.meleeStrikeSerial){
+                    if(motion.melee.dashing())motion.melee.strike();motion.melee.syncCooldown(state.meleeCooldown);
+                }
                 if(state.active!=active) {
                     active=state.active;
                     if(active) {
@@ -125,6 +132,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         controls=movementKeys.sample(held,mc.player.getYRot(),mc.player.getXRot(),(int)Math.floor(motion.time/MovementClock.INTERVAL));previous=held;
         send(0);
         mc.options.keyAttack.setDown(false);mc.options.keyUse.setDown(false);mc.options.keySprint.setDown(false);mc.options.keyShift.setDown(false);mc.options.keyJump.setDown(false);
+        mc.options.keyDrop.setDown(false);while(mc.options.keyDrop.consumeClick()){}
         HazeLab.tick(mc);
     }
     public static void send(int command) {
@@ -172,6 +180,10 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         }
         @Override public V3 wallContact() {
             return mover.wallContact(HazeActor.of(p.position()),p.getPose()==Pose.CROUCHING,world);
+        }
+        @Override public boolean meleeContact(V3 direction,double distance){
+            Vec3 start=p.getEyePosition().add(0,-p.getEyeHeight()*.4,0),end=start.add(HazeActor.mc(direction.mul(distance)));
+            return !p.level().getEntitiesOfClass(Mob.class,new AABB(start,end).inflate(.35),e->e.isAlive()&&p.hasLineOfSight(e)&&e.getBoundingBox().inflate(.35).clip(start,end).isPresent()).isEmpty();
         }
         @Override public Motion.MoveResult move(V3 delta,boolean crouch) {
             return move(delta,crouch,owner.velocity,.015625);

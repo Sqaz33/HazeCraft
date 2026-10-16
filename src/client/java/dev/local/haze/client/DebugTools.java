@@ -38,6 +38,7 @@ final class DebugTools {
             String.format(Locale.ROOT,"Стамина %.2f/%.0f | прыжок %s #%d",m.stamina,m.maxStamina(),m.jumpKind,m.jumpSerial),
             "Возд. прыжок "+(m.airJumpUsed?"использован":"готов")+" | дэш "+(m.airDashUsed?"использован":"готов")+" | стен "+m.wallJumps,
             "Дэш "+m.dashFacing+String.format(Locale.ROOT," | вектор %.2f, %.2f, %.2f",m.dashDirection.x(),m.dashDirection.y(),m.dashDirection.z()),
+            "Мили: "+m.melee.phase+" / "+m.melee.type+String.format(Locale.ROOT," | фаза %.2f | КД %.2f",m.melee.age(),m.melee.cooldown()),
             "Клип: "+clip.substring(clip.lastIndexOf('/')+1));
     }
     static void renderOverlay(GuiGraphics g){

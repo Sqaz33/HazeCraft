@@ -13,5 +13,6 @@ public abstract class KeyboardMixin {
     private void haze$capture(long window,int action,KeyEvent key,CallbackInfo ci) {
         if(HazeClient.debugKey(window,key.key(),action)){ci.cancel();return;}
         HazeClient.keyboard(key.key(),action);
+        if(HazeClient.ownsMeleeKey(window,key.key()))ci.cancel();
     }
 }

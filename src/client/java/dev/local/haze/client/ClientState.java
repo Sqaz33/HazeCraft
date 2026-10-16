@@ -10,6 +10,10 @@ public final class ClientState {
     public final boolean debugNoCooldowns;
     public final boolean debugInfiniteAmmo,debugLockHealth;
     public final JsonObject debugTarget;
+    public final String meleePhase,meleeType;
+    public final double meleeAge,meleeChargeAge,meleeCooldown,meleeStrikeAge;
+    public final float meleeYaw;
+    public final long meleeSerial,meleeStrikeSerial;
     public final double health,maxHealth,reload,time,recoil,bloom,actionTime,daggerTime,leftShot,rightShot,smokeRemaining,danceRemaining;
     public final int ammo,smokeCharges;
     public final long shots;
@@ -28,6 +32,11 @@ public final class ClientState {
         debugInfiniteAmmo=j.has("debugInfiniteAmmo")&&j.get("debugInfiniteAmmo").getAsBoolean();
         debugLockHealth=j.has("debugLockHealth")&&j.get("debugLockHealth").getAsBoolean();
         debugTarget=j.has("debugTarget")?j.getAsJsonObject("debugTarget"):null;
+        meleePhase=j.has("meleePhase")?j.get("meleePhase").getAsString():"NONE";meleeType=j.has("meleeType")?j.get("meleeType").getAsString():"NONE";
+        meleeAge=j.has("meleeAge")?n(j,"meleeAge"):0;meleeChargeAge=j.has("meleeChargeAge")?n(j,"meleeChargeAge"):0;
+        meleeCooldown=j.has("meleeCooldown")?n(j,"meleeCooldown"):0;meleeYaw=j.has("meleeYaw")?j.get("meleeYaw").getAsFloat():0;
+        meleeStrikeAge=j.has("meleeStrikeAge")?n(j,"meleeStrikeAge"):100;
+        meleeSerial=j.has("meleeSerial")?j.get("meleeSerial").getAsLong():0;meleeStrikeSerial=j.has("meleeStrikeSerial")?j.get("meleeStrikeSerial").getAsLong():0;
         health=n(j,"health");maxHealth=n(j,"maxHealth");reload=n(j,"reload");time=n(j,"time");recoil=n(j,"recoil");bloom=n(j,"bloom");actionTime=n(j,"actionTime");
         ammo=j.get("ammo").getAsInt();shots=j.get("shots").getAsLong();action=j.get("action").getAsString();
         daggerTime=n(j,"daggerTime");

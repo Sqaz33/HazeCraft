@@ -40,6 +40,10 @@ with zipfile.ZipFile(source) as jar:
     jar.getinfo('dev/local/haze/sim/movement/MantleExit.class')
     mantle=json.loads(jar.read('haze/retail/profile.json'))['abilities']['citadel_ability_mantle']['m_vecMantleTypes']
     assert all(float(t['m_flSlideExitBoostOnGround'])==400 for t in mantle)
+    jar.getinfo('dev/local/haze/sim/movement/MeleeController.class')
+    jar.getinfo('dev/local/haze/sim/movement/MeleeVisuals.class')
+    attacks=json.loads(jar.read('haze/retail/profile.json'))['abilities']['ability_melee_haze']['m_mapAttacks']
+    assert all('m_flMovementAcc' in a and 'm_flAttackStateTime' in a for a in attacks.values())
 destination = root / 'dist' / source.name
 destination.parent.mkdir(exist_ok=True)
 shutil.copy2(source, destination)

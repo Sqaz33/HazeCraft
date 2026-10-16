@@ -45,6 +45,12 @@ public final class HazeView {
             }
         }
         if(m!=null) {
+            if(m.melee.phase==dev.local.haze.sim.movement.MeleeController.Phase.CHARGING){
+                JsonObject hold=d.ability("ability_melee_haze").getAsJsonObject("m_cameraSequenceHoldStart");
+                double age=m.melee.chargeAge()+partial*.05;
+                back=CameraSequence.evaluate(hold.getAsJsonArray("m_vecDistanceOperations"),age,back,back);
+                fov=CameraSequence.evaluate(hold.getAsJsonArray("m_vecFOVOperations"),age,fov,fov);
+            }
             if(m.airDashUsed) {
                 double elapsed=m.time-m.dashStart+partial*0.05;
                 JsonObject dash=d.ability("citadel_ability_dash").getAsJsonObject("m_cameraSequenceAirDashActivate");

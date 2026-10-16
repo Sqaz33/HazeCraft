@@ -1,6 +1,7 @@
 package dev.local.haze.client;
 
 import dev.local.haze.sim.*;
+import dev.local.haze.sim.movement.MeleeVisuals;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.*;
@@ -55,6 +56,13 @@ public final class HazeRenderer {
             if((clip.endsWith("jump_ground")||clip.endsWith("jump_invis_start"))&&motion!=null)time=motion.time-motion.jumpStart+partial*0.05;
             if(clip.contains("slide")&&motion!=null){time=motion.time-motion.slideStart+partial*0.05;if(clip.endsWith("slide_loop"))time-=asset.clips.get("models/heroes_staging/haze/clips/slide_start").duration();}
             if(clip.contains("ability")||clip.contains("melee")||clip.contains("parry"))time=state.actionTime+partial*0.05;
+            if(clip.contains("melee")){
+                String phase=motion!=null?motion.melee.phase.name():state.meleePhase;
+                double age=(motion!=null?motion.melee.age():state.meleeAge)+partial*.05;
+                if(phase.equals("CHARGING"))time=Math.max(0,age-Retail.DATA.field("ability_melee_haze","m_flChargeAnimDelayTime"));
+                else if(phase.endsWith("DASH"))time=asset.clips.get(clip).duration()*Math.min(1,age/(motion!=null?motion.melee.movementDuration():Retail.DATA.ability("ability_melee_haze").getAsJsonObject("m_mapAttacks").getAsJsonObject(state.meleeType.equals("HEAVY_AIR")?"EAttackType_HeavyAir":state.meleeType.equals("SLIDE")?"EAttackType_Slide":"EAttackType_Heavy").getAsJsonObject("m_MovementSpeedCurve").getAsJsonArray("m_vDomainMaxs").get(0).getAsDouble()));
+                else time=(motion!=null?motion.melee.time-motion.melee.strikeTime:state.meleeStrikeAge)+partial*.05;
+            }
             if(!asset.clips.containsKey(clip))clip="primary_idle";
             List<SkinnedAsset.Layer> locomotionLayers=List.of();
             if(motion!=null&&clip.contains("_run_")){
@@ -77,6 +85,7 @@ public final class HazeRenderer {
             Vec3 pos=new Vec3(entity.xOld+(entity.getX()-entity.xOld)*partial,entity.yOld+(entity.getY()-entity.yOld)*partial,entity.zOld+(entity.getZ()-entity.zOld)*partial);
             int light=LevelRenderer.getLightColor(mc.level,entity.blockPosition());
             float modelYaw=entity.getYRot(partial);
+            if(clip.contains("melee")&&(motion!=null?motion.melee.locksMovement():!state.meleePhase.equals("NONE")&&!state.meleePhase.equals("CHARGING")))modelYaw=motion!=null?motion.melee.yaw:state.meleeYaw;
             if(motion!=null&&(motion.mode==Motion.Mode.DASH_GROUND||motion.mode==Motion.Mode.DASH_AIR))
                 modelYaw=DashVisuals.yaw(clip,motion.dashDirection,modelYaw);
             actors.add(new ActorFrame(pos,modelYaw,geometry,light,state.invisible?100:255));
@@ -93,8 +102,9 @@ public final class HazeRenderer {
         String prefix="models/heroes_staging/haze/clips/";
         if(s.flurry)return prefix+"ability_bullet_flurry";
         if(s.action.startsWith("parry")&&s.actionTime<0.75)return prefix+s.action;
-        if(s.action.equals("melee_light")&&s.actionTime<0.5)return prefix+"melee_quick_1";
-        if(s.action.equals("melee_heavy")&&s.actionTime<0.6)return prefix+"melee_hit";
+        String meleeClip=m!=null?MeleeVisuals.clip(m.melee.phase.name(),m.melee.type.name(),m.melee.age(),m.melee.time-m.melee.strikeTime,m.melee.chargeDelay(),m.grounded):
+            MeleeVisuals.clip(s.meleePhase,s.meleeType,s.meleeAge,s.meleeStrikeAge,Retail.DATA.field("ability_melee_haze","m_flChargeAnimDelayTime"),true);
+        if(meleeClip!=null)return prefix+meleeClip;
         if(m!=null) {
             switch(m.mode) {
                 case DASH_GROUND: return prefix+"dash_ground";

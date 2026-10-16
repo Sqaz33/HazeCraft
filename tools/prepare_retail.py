@@ -48,6 +48,10 @@ if native_ability_file.exists():native_abilities=json.loads(native_ability_file.
 for ability,fields in native_abilities.items():
     for key,evidence in fields.items():abilities[ability].setdefault(key,evidence['value'])
 native_mantle=verified_defaults['MantleType_t']
+for definition in abilities.values():
+    if isinstance(definition,dict) and definition.get('_class')=='citadel_ability_hold_melee':
+        for attack in definition.get('m_mapAttacks',{}).values():
+            for key,evidence in verified_defaults.get('AttackData_t',{}).items():attack.setdefault(key,evidence['value'])
 for mantle in abilities['citadel_ability_mantle']['m_vecMantleTypes']:
     for key,evidence in native_mantle.items():mantle.setdefault(key,evidence['value'])
 settings_path=pathlib.Path('C:/Program Files (x86)/Steam/userdata/1035274860/1422450/local/cfg/user_convars_0_slot0.vcfg')
