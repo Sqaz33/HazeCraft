@@ -8,13 +8,22 @@ public final class HazeView {
     public record Parameters(double back,double side,double height,double fov){}
     private static boolean aiming;
     private static double aimStarted,aimInitial=90,aimFov=90;
-    public static void reset(){aiming=false;aimStarted=0;aimInitial=aimFov=Retail.DATA.nativeFloat("citadel_camera_hero_fov");}
+    private static final CameraHeightBlend crouchBlend=new CameraHeightBlend((float)Retail.DATA.nativeFloat("citadel_camera_height_approach_speed"));
+    private static Motion crouchOwner;
+    public static void reset(){aiming=false;aimStarted=0;aimInitial=aimFov=Retail.DATA.nativeFloat("citadel_camera_hero_fov");crouchBlend.reset();crouchOwner=null;}
+    /** Advance only during camera setup; HUD/FOV reads must not advance the transition again. */
+    public static void updateCrouch(float partial){
+        Motion motion=HazeClient.motion;if(motion==null)return;
+        if(crouchOwner!=motion){crouchBlend.reset();crouchOwner=motion;}
+        crouchBlend.advanceTo(motion.time+partial*.05,motion.ducked);
+    }
     public static Parameters parameters(float partial) {
         Retail d=Retail.DATA;ClientState s=HazeClient.own();Motion m=HazeClient.motion;
         boolean crouch=m!=null?m.ducked:HazeClient.controls.down(Controls.CROUCH),aim=HazeClient.controls.down(Controls.AIM);
         double back=Retail.number(d.camera.get("m_flCameraBackOffset"));
         double side=Retail.number(d.camera.get("m_flCameraSideOffset"));
-        double height=Retail.number(d.camera.get(crouch?"m_flCameraHeightCrouching":"m_flCameraHeightStanding"));
+        double height=m!=null?crouchBlend.height(d.camera.get("m_flCameraHeightStanding").getAsFloat(),d.camera.get("m_flCameraHeightCrouching").getAsFloat()):
+            Retail.number(d.camera.get(crouch?"m_flCameraHeightCrouching":"m_flCameraHeightStanding"));
         double fov=d.nativeFloat("citadel_camera_hero_fov");
         double clock=(m!=null?m.time:s!=null?s.time:0)+partial*0.05;
         if(aim!=aiming){aiming=aim;aimStarted=clock;aimInitial=aimFov;}

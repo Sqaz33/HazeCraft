@@ -394,3 +394,28 @@ Four regressions cover UV/area, endpoints/padding, rotated/scaled reveal boundar
 and an italic partial triangle. All 83 software tests pass. No in-game QA driven.
 Stage 1 installation targets usual TLauncher mods folder; old 0.3.3 retained in
 private backups/tlauncher-before-0.3.4. Await manual user feedback for stage 2.
+
+
+## 2026-10-16 — stage 2: 0.3.5 crouch camera transition
+
+User authorizes stage 2. Universal Modder recon repeated. Pinned client 25950029:
+constructor 18008e710 registers citadel_camera_height_approach_speed=80; sole
+runtime global xref in 1805ea030 calls 1821effe0(current,target,strength,dt).
+Important correction: 80 is a blend approach strength, not Source height/sec.
+Native helper applies square-root remaining-time approach, full 0→1 duration
+sqrt(1/80)≈.1118s. Audited stand/crouch pose getter 1805f5c30 and pose composition
+1805ffe50, current named schema enum confirms SLIDING=70. Haze model heights
+86/55 Source units preserved. Details in REPAIR_STAGES.md.
+
+Added CameraHeightBlend with float operation ordering matching native helper.
+CameraMixin advances it once per camera setup from local Motion time/partial;
+HUD/FOV queries only read height. Crouch reversals start at current blend, same
+or older timestamps do not advance state, owner/reset initializes cleanly.
+Physical movement/collision controller unchanged.
+
+Offline Unicorn runs original helper: 192 cases and 227 reversal-trace frames.
+Added four regressions including source parity, continuity/reversals, repeated
+reads, reset and render-frame partition. All 87 software tests pass. No automated
+in-game control tests or QA launch. User installation replaces 0.3.4 with 0.3.5;
+old JAR retained in private backups/tlauncher-before-0.3.5. Direct user launch
+uses existing installed Fabric profile. Await user feedback before stage 3.

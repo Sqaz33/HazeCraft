@@ -16,6 +16,7 @@ public abstract class CameraMixin {
     @Inject(method="setup",at=@At("TAIL"))
     private void haze$camera(Level level,Entity e,boolean third,boolean front,float partial,CallbackInfo ci) {
         if(!HazeClient.active||!HazeClient.active(e.getUUID()))return;
+        HazeView.updateCrouch(partial);
         Retail d=Retail.DATA;HazeView.Parameters view=HazeView.parameters(partial);
         double height=view.height(),back=view.back(),side=view.side();
         ClientState state=HazeClient.own();float yaw=e.getYRot(partial),pitch=e.getXRot(partial)-(float)(state==null?0:state.recoil);
