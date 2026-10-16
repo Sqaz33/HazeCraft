@@ -370,3 +370,27 @@ Added a regression for refill preserving pending dagger/smoke effects and charge
 All 79 software tests pass; no game process was launched or driven. Installed
 one-JAR 0.3.3-debug-menu in the previously authorized TLauncher mods folder,
 with 0.3.2 moved to private lab backups/tlauncher-before-0.3.3. Restart required.
+
+
+## 2026-10-16 — requested staged repairs, stage 1: 0.3.4 channel mask
+
+User supplies six issues and explicitly requests per-stage Universal Modder
+recon, software tests, individual commit, install, direct user launch and ask
+whether OK before continuing. No automated in-game control tests.
+
+UM scan confirms owned Source 2 install. Read/extracted current build 25950029
+VPK resources with CRC checks, decoded through Source 2 Viewer. Current XML
+panorama/layout/ability_hud_elements/element_progress_bar_text: SplitLabelName
+ability_name is mirrored by Image src=panel://ability_name, context=progress,
+progress=clip_right under the rotated parent. Current CSS: parent rotateZ(-10deg),
+48px Oracle, 16px padding; smoke overrides rotation 0deg / scale70%. Evidence and
+hashes private reference/25950029/hud-stage1. Runtime refreshed relevant CSS tables.
+
+Replaced axis-aligned screen scissor for channel fill with local glyph geometry
+clipping before parent transform, UV interpolated at the cut. Existing Oracle
+font glyphs/pipeline are used; no raster replacement. Uncut glyphs retain native
+render path. Clipped polygons triangulate into GUI quads with a repeated corner.
+Four regressions cover UV/area, endpoints/padding, rotated/scaled reveal boundary
+and an italic partial triangle. All 83 software tests pass. No in-game QA driven.
+Stage 1 installation targets usual TLauncher mods folder; old 0.3.3 retained in
+private backups/tlauncher-before-0.3.4. Await manual user feedback for stage 2.

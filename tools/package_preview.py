@@ -29,6 +29,7 @@ with zipfile.ZipFile(source) as jar:
     jar.getinfo('dev/local/haze/client/HazeMeshRenderer.class')
     jar.getinfo('dev/local/haze/sim/IndexedTopology.class')
     jar.getinfo('dev/local/haze/client/DebugScreen.class')
+    jar.getinfo('dev/local/haze/client/LocalClippedText.class')
 destination = root / 'dist' / source.name
 destination.parent.mkdir(exist_ok=True)
 shutil.copy2(source, destination)

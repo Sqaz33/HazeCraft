@@ -161,10 +161,15 @@ public final class HazeHud {
         String label=HudSource.loc(Retail.SIGNATURES[index]).toUpperCase(Locale.ROOT);
         float scale=smoke?0.7F:1,cx=width/2+(smoke?0:250),cy=1080-190;
         g.pose().pushMatrix();g.pose().translate(cx,cy);g.pose().scale(scale,scale);g.pose().rotate(smoke?0:(float)Math.toRadians(-10));
-        float actualWidth=mc().font.width(component(label,"oracle"))*1.5F;
         text(g,label,0,-64,48,"oracle",0x66ffefd7,true);
-        g.enableScissor((int)(-actualWidth/2)-16,-80,(int)(-actualWidth/2+actualWidth*Math.max(0,Math.min(1,remaining/duration))),0);
-        text(g,label,0,-64,48,"oracle",color("hazeColor"),true);g.disableScissor();
+        float fill=(float)Math.max(0,Math.min(1,remaining/duration));
+        if(fill>0){
+            Component text=component(label,"oracle");int textWidth=mc().font.width(text),textLeft=-textWidth/2;
+            float factor=48F/32,padding=(float)HudSource.px("ability_hud_elements/element_progress_bar_text.css",".SplitLabelProgressBar .SplitLabelName Label","padding")/factor;
+            float cutoff=dev.local.haze.sim.LocalTextClip.cutoff(textLeft,textWidth,padding,fill);
+            g.pose().pushMatrix();g.pose().translate(0,-64);g.pose().scale(factor,factor);
+            LocalClippedText.draw(g,mc().font,text,textLeft,0,color("hazeColor"),cutoff);g.pose().popMatrix();
+        }
         g.pose().popMatrix();
     }
     private static void arc(GuiGraphics g,float cx,float cy,float radius,int thickness,double start,double end,double fraction,int tint){
