@@ -457,3 +457,16 @@ Physics/input/camera unchanged. Four added regressions; all 95 software tests
 pass. No gameplay automation. Installed one-JAR 0.3.7 to usual TLauncher mods,
 old 0.3.6 saved outside mods under private backups/tlauncher-before-0.3.7.
 Direct user launch and request manual confirmation; stages 4–6 remain queued.
+
+
+## 2026-10-16 — 0.3.8-health-mask, этап 4
+
+Этап 3 принят пользователем. Повторная разведка Universal Modder; текущие
+health XML/CSS/SVG извлечены из build 25950029, декодированы Source 2 Viewer.
+Данные вне Git: D:/DeadlockHazeLab/reference/25950029/health-stage4/evidence.json.
+Исходные размеры 66×212, отступы 4/0/1/1, border margin 30, frame 68×220,
+общий поворот −20°. Экранный scissor заменён дробной локальной геометрией
+и UV без растяжения текстуры. Деления 30%/100% ×3px используют ту же маску.
+Цвет рамки берётся из исходного CSS. Альфа подготовленной заливки сверена
+программно с исходной opacity-mask в CSS-размере. 99 тестов прошли.
+В игре управление не тестировалось; сборка запускается только пользователю.

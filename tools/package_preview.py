@@ -32,6 +32,8 @@ with zipfile.ZipFile(source) as jar:
     jar.getinfo('dev/local/haze/client/LocalClippedText.class')
     jar.getinfo('dev/local/haze/sim/CameraHeightBlend.class')
     jar.getinfo('dev/local/haze/sim/DashVisuals.class')
+    jar.getinfo('dev/local/haze/client/LocalClippedImage.class')
+    jar.getinfo('dev/local/haze/sim/LocalImageSlice.class')
 destination = root / 'dist' / source.name
 destination.parent.mkdir(exist_ok=True)
 shutil.copy2(source, destination)

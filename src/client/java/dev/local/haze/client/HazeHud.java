@@ -86,14 +86,16 @@ public final class HazeHud {
         g.pose().pushMatrix();g.pose().translate(left+hcWidth/2F,top+hcHeight/2F);g.pose().scale(1.2F,1.2F);g.pose().translate(-hcWidth/2F,-hcHeight/2F);
         int bw=px(H,".bars_container","width"),bh=px(H,".bars_container","height");
         g.pose().pushMatrix();g.pose().translate(hcWidth-20-bw+bw/2F,20+bh/2F);g.pose().rotate((float)Math.toRadians(-20));g.pose().translate(-bw/2F,-bh/2F);
-        float x=30,y=30;int w=px(H,"#health_bar","width"),h=px(H,"#health_bar","height");
+        float x=px(H,".health_bar_border","margin"),y=x;int w=px(H,"#health_bar","width"),h=px(H,"#health_bar","height");
         image(g,"hud/healthbar/healthbar_backer_mask.png",x+1,y+4,w,h,0xea333333);
-        double ratio=Math.max(0,Math.min(1,s.health/s.maxHealth));
-        int empty=(int)(h*(1-ratio));
-        g.enableScissor((int)x,(int)y+4+empty,(int)x+w+2,(int)y+h+5);
-        image(g,"hud/healthbar/health_fill_masked.png",x+1,y+4,w,h,color("offWhite"));g.disableScissor();
-        for(int tick=100;tick<s.maxHealth;tick+=100){int ty=(int)(y+4+h*(1-tick/s.maxHealth));g.fill((int)x+2,ty,(int)x+(tick%500==0?w-2:w/3),ty+3,0xb310130d);}
-        image(g,"hud/healthbar/healthbar_frame_with_regen.png",x,y,px(H,"#health_bar_frame","width"),px(H,"#health_bar_frame","height"),color("vivaciousGreen"));
+        LocalClippedImage.draw(g,"hud/healthbar/health_fill_masked.png",LocalImageSlice.bottom(x+1,y+4,w,h,s.health,s.maxHealth),color("offWhite"));
+        // Panorama applies the same opacity mask to both health and its scale marks.
+        for(int tick=100;tick<s.maxHealth;tick+=100){
+            float tickTop=(float)(1-tick/s.maxHealth),right=tick%500==0?1:.3F;
+            LocalClippedImage.draw(g,"hud/healthbar/healthbar_backer_mask.png",LocalImageSlice.region(x+1,y+4,w,h,0,tickTop,right,tickTop+3F/h),0xb310130d);
+        }
+        int frameColor=HudSource.color(HudSource.rule(H,s.health/s.maxHealth<.3?".healthLow #health_bar_frame":"#health_bar_frame","wash-color"));
+        image(g,"hud/healthbar/healthbar_frame_with_regen.png",x,y,px(H,"#health_bar_frame","width"),px(H,"#health_bar_frame","height"),frameColor);
         image(g,"hud/healthbar/icon_regen_arrows.png",42,36,7,8,color("offWhite"));
         text(g,String.format(Locale.ROOT,"%.1f",Retail.DATA.stat("EBaseHealthRegen")),52,33,10,"radiance",color("offWhite"),false);
         g.pose().popMatrix();
