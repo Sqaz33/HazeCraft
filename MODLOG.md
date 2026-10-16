@@ -438,3 +438,22 @@ crouch, ground crouch/downward dash and forced ceiling geometry. All 91 software
 tests pass. No automated in-game input tests. Installed 0.3.6 in owner's usual
 mods folder; 0.3.5 backed up under lab/backups/tlauncher-before-0.3.6. Direct
 user launch for repeat review of stage 2; stages 3–6 remain queued.
+
+
+## 2026-10-16 — stage 3: 0.3.7 dash visual heading
+
+User authorizes stage 3 and adds diagonal airborne body facing. After asking for
+speed, user explicitly reiterates separate stages. Only stage 3 implemented.
+Universal Modder recon completed; current VPK graphs decoded with Source 2
+Viewer. Haze ground graph binds one forward dash_ground; current in-air variation
+binds four cardinal dash_air clips. Private graph evidence in
+reference/25950029/dash-stage3/evidence.json.
+
+Render-only DashVisuals derives exact world yaw from immutable dashDirection.
+Ground single clip faces travel; directional air clip receives residual angle
+(world travel minus that clip's cardinal offset). Cardinal air visuals preserved.
+Applies only during active dash modes, leaving wall jump/action visuals intact.
+Physics/input/camera unchanged. Four added regressions; all 95 software tests
+pass. No gameplay automation. Installed one-JAR 0.3.7 to usual TLauncher mods,
+old 0.3.6 saved outside mods under private backups/tlauncher-before-0.3.7.
+Direct user launch and request manual confirmation; stages 4–6 remain queued.

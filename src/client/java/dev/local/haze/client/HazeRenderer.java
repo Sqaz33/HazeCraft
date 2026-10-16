@@ -76,7 +76,10 @@ public final class HazeRenderer {
             for(var layer:layers)if(layer.clip().contains("reload")||layer.clip().contains("dagger"))HazeSounds.animation(state.uuid,entity,"action",layer.clip(),layer.time(),layer.loop());
             Vec3 pos=new Vec3(entity.xOld+(entity.getX()-entity.xOld)*partial,entity.yOld+(entity.getY()-entity.yOld)*partial,entity.zOld+(entity.getZ()-entity.zOld)*partial);
             int light=LevelRenderer.getLightColor(mc.level,entity.blockPosition());
-            actors.add(new ActorFrame(pos,entity.getYRot(partial),geometry,light,state.invisible?100:255));
+            float modelYaw=entity.getYRot(partial);
+            if(motion!=null&&(motion.mode==Motion.Mode.DASH_GROUND||motion.mode==Motion.Mode.DASH_AIR))
+                modelYaw=DashVisuals.yaw(clip,motion.dashDirection,modelYaw);
+            actors.add(new ActorFrame(pos,modelYaw,geometry,light,state.invisible?100:255));
             for(ClientState.Stack stack:state.stacks) {
                 Entity mob=mc.level.getEntity(stack.id());if(mob==null||(!stack.sleep()&&stack.count()==0))continue;
                 if(stack.count()>0)text.add(new Label(mob.position().add(0,mob.getBbHeight()+0.35,0),stack.count()));
