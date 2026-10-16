@@ -64,13 +64,14 @@ public final class Motion {
     private double p(CharacterMovementProfile.Role role,String key) { return profile.baseProperty(role,key); }
     private double n(String key) { Double value=nativeValues.get(key);if(value==null)throw new IllegalArgumentException("Missing movement rule: "+key);return value; }
     public double maxStamina() { return profile.stat("EStamina"); }
+    public boolean crouchedPose() { return grounded&&ducked; }
     public void step(double dt,Controls input,Collision world,double bonusSpeed,double capSpeed) {
         step(dt,input,world,bonusSpeed,capSpeed,false);
     }
     public void step(double dt,Controls input,Collision world,double bonusSpeed,double capSpeed,boolean inCombat) {
         if(dt<0 || dt>0.05 || (dt==0&&input.pressed()==0)) throw new IllegalArgumentException("Motion substep");
         time+=dt;combatThisStep=inCombat;
-        ducked=input.down(Controls.CROUCH)||!world.canStand();
+        ducked=(grounded&&input.down(Controls.CROUCH))||!world.canStand();
         regenPenalties.removeIf(end->time>=end);
         PercentageStack regen=new PercentageStack();
         for(double ignored:regenPenalties)regen.add((float)p(JUMP,"StaminaRegenReduction"));
@@ -123,6 +124,7 @@ public final class Motion {
         // Native action slots: held mantle (10) consumes Space before jump (12).
         if((input.down(Controls.JUMP)||input.edge(Controls.JUMP)) && wall && time>=dashJumpUntil && tryMantle(input,world))return;
         if(input.edge(Controls.JUMP)) jump(input,world);
+        if(!grounded&&ducked&&world.canStand())ducked=false;
         if(dt==0)return; // Input at a host-frame boundary changes action state without advancing physics.
         if(mode==Mode.MANTLE)return;
         boolean dash=mode==Mode.DASH_GROUND || mode==Mode.DASH_AIR;
@@ -325,9 +327,10 @@ public final class Motion {
         else velocity=velocity.withY(velocity.y()-gravity*dt);
     }
     private MoveResult collide(Collision world,V3 displacement,boolean crouch,double dt) {
-        MoveResult r=world.move(displacement,crouch||ducked,velocity,dt);
+        MoveResult r=world.move(displacement,(grounded&&crouch)||ducked,velocity,dt);
         if(r.ground()&&!grounded){landedTime=time;groundedSince=time;}
         grounded=r.ground();wall=r.wall();wallNormal=r.wallNormal();slope=r.slope();
+        if(!grounded&&ducked&&world.canStand())ducked=false;
         if(mode==Mode.DASH_AIR){airDashOffset=airDashOffset.add(r.actual().flat());airDashTravel=airDashOffset.horizontal();}
         if(r.resolvedVelocity()!=null)velocity=r.resolvedVelocity();
         else {

@@ -66,7 +66,7 @@ public final class HazeRenderer {
             boolean loop=!clip.contains("dash")&&!clip.contains("mantle")&&!clip.contains("melee")&&!clip.contains("parry")&&!clip.endsWith("jump_ground")&&!clip.endsWith("jump_invis_start")&&!clip.endsWith("slide_start");
             boolean running=motion!=null&&motion.velocity.horizontal()>0.2;
             List<SkinnedAsset.Layer> layers=new ArrayList<>(locomotionLayers);
-            layers.addAll(HazePose.layers(asset,clip,time,loop,motion==null?Motion.Mode.IDLE:motion.mode,state.smoke,own&&HazeClient.controls.down(Controls.CROUCH),running,
+            layers.addAll(HazePose.layers(asset,clip,time,loop,motion==null?Motion.Mode.IDLE:motion.mode,state.smoke,motion!=null&&motion.crouchedPose(),running,
                 entity.getXRot(partial),0,state.daggerTime+partial*0.05,state.reload,
                 state.time-state.rightShot+partial*0.05,state.time-state.leftShot+partial*0.05));
             var pose=asset.pose(clip,time,loop,layers);
@@ -107,10 +107,11 @@ public final class HazeRenderer {
             if(m.velocity.horizontal()>0.2) {
                 String dir=c.down(Controls.FORWARD)?(c.down(Controls.LEFT)?"nw":c.down(Controls.RIGHT)?"ne":"n"):
                     c.down(Controls.BACK)?(c.down(Controls.LEFT)?"sw":c.down(Controls.RIGHT)?"se":"s"):c.down(Controls.LEFT)?"w":c.down(Controls.RIGHT)?"e":"n";
-                return prefix+(s.smoke?"invis_run_":m.mode==Motion.Mode.SPRINT?"out_of_combat_run_":c.down(Controls.CROUCH)?"weapon_crouch_run_":"weapon_run_")+dir;
+                return prefix+(s.smoke?"invis_run_":m.mode==Motion.Mode.SPRINT?"out_of_combat_run_":m.crouchedPose()?"weapon_crouch_run_":"weapon_run_")+dir;
             }
         }
-        return prefix+(s.smoke?(c.down(Controls.CROUCH)?"invis_crouch_idle":"invis_stand_idle"):c.down(Controls.CROUCH)?"weapon_crouch_idle":"weapon_stand_idle");
+        boolean crouch=m!=null&&m.crouchedPose();
+        return prefix+(s.smoke?(crouch?"invis_crouch_idle":"invis_stand_idle"):crouch?"weapon_crouch_idle":"weapon_stand_idle");
     }
     private static RenderType type(String texture) {
         return TYPES.computeIfAbsent(texture,t->RenderType.create("haze_"+t,RenderSetup.builder(PIPELINE)

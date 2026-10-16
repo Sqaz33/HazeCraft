@@ -15,11 +15,11 @@ public final class HazeView {
     public static void updateCrouch(float partial){
         Motion motion=HazeClient.motion;if(motion==null)return;
         if(crouchOwner!=motion){crouchBlend.reset();crouchOwner=motion;}
-        crouchBlend.advanceTo(motion.time+partial*.05,motion.ducked);
+        crouchBlend.advanceTo(motion.time+partial*.05,motion.crouchedPose());
     }
     public static Parameters parameters(float partial) {
         Retail d=Retail.DATA;ClientState s=HazeClient.own();Motion m=HazeClient.motion;
-        boolean crouch=m!=null?m.ducked:HazeClient.controls.down(Controls.CROUCH),aim=HazeClient.controls.down(Controls.AIM);
+        boolean crouch=m!=null?m.crouchedPose():HazeClient.controls.down(Controls.CROUCH),aim=HazeClient.controls.down(Controls.AIM);
         double back=Retail.number(d.camera.get("m_flCameraBackOffset"));
         double side=Retail.number(d.camera.get("m_flCameraSideOffset"));
         double height=m!=null?crouchBlend.height(d.camera.get("m_flCameraHeightStanding").getAsFloat(),d.camera.get("m_flCameraHeightCrouching").getAsFloat()):

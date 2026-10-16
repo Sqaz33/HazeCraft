@@ -419,3 +419,22 @@ reads, reset and render-frame partition. All 87 software tests pass. No automate
 in-game control tests or QA launch. User installation replaces 0.3.4 with 0.3.5;
 old JAR retained in private backups/tlauncher-before-0.3.5. Direct user launch
 uses existing installed Fabric profile. Await user feedback before stage 3.
+
+
+## 2026-10-16 — stage 2 correction: 0.3.6 ground-only crouch
+
+User clarifies no character crouch in air. Repeated Universal Modder scan and
+reviewed current native camera predicate: controller duck byte additionally
+requires the same support query used in jump classification (1805ea030 /
+18024c330). Host had used raw Ctrl regardless of grounded state. Ordinary crouch
+now requires ground; camera and animation use Motion.crouchedPose (grounded &&
+ducked). Clear ordinary crouch immediately after jumping, including zero-dt
+input edges, and leaving ground. Forced compact geometry under low ceilings is
+kept for collision safety, independent of airborne visual pose. Final host pose
+syncs with motion. Raw Ctrl still drives downward dash and landing slide setup.
+
+Four regressions cover airborne input/capsule/visual pose, zero-time jump from
+crouch, ground crouch/downward dash and forced ceiling geometry. All 91 software
+tests pass. No automated in-game input tests. Installed 0.3.6 in owner's usual
+mods folder; 0.3.5 backed up under lab/backups/tlauncher-before-0.3.6. Direct
+user launch for repeat review of stage 2; stages 3–6 remain queued.

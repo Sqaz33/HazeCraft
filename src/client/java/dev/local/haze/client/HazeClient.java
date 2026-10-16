@@ -145,6 +145,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         movementClock.advance(.05,controls,(dt,input)->motion.step(dt,input,collision,bonus,cap,state!=null&&state.inCombat));
         if((before==Motion.Mode.SLIDE)!=(motion.mode==Motion.Mode.SLIDE))send(HazeProtocol.SLIDE_STATE_COMMAND,0);
         HazeSounds.movement(before,jumpBefore,motion,controls,p);
+        p.setPose(motion.ducked?Pose.CROUCHING:Pose.STANDING);
         p.setOnGround(motion.grounded);
         p.setDeltaMovement(HazeActor.mc(motion.velocity.mul(0.05)));p.fallDistance=0;p.setSprinting(false);
         return true;
