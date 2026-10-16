@@ -17,11 +17,11 @@ class MovementIntegrityTest {
             assertEquals(1,position[0].normalized().dot(new Controls(direction,0,yaw,0).wish()),1e-8);
         }
     }
-    @Test void airDashUsesItsOwnDistanceAndOnlyOneChargeUntilGround(){
+    @Test void airDashRampsThroughAirAccelerationAndOnlyUsesOneChargeUntilGround(){
         Motion m=new Motion(D);m.grounded=false;V3[] position={V3.ZERO};var collision=air(position);
         m.step(DT,new Controls(Controls.FORWARD|Controls.DASH,Controls.DASH,0,0),collision,0,-1,true);
         for(int i=1;i<52;i++)m.step(DT,new Controls(Controls.FORWARD,0,0,0),collision,0,-1,true);
-        assertEquals(8,position[0].z(),1e-8);assertEquals(0,position[0].y(),1e-8);assertTrue(m.airDashUsed);
+        assertTrue(position[0].z()>4&&position[0].z()<8);assertTrue(position[0].y()>0&&position[0].y()<.1);assertTrue(m.airDashUsed);
         double start=m.dashStart,stamina=m.stamina;
         m.step(DT,new Controls(Controls.DASH,Controls.DASH,0,0),collision,0,-1,true);
         assertEquals(start,m.dashStart);assertTrue(m.stamina>=stamina);

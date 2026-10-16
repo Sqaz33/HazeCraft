@@ -13,8 +13,9 @@ ASSETS=REPO/'src/main/resources/assets/haze/retail'
 DATA=REPO/'src/main/resources/haze/retail'
 ASSETS.mkdir(parents=True,exist_ok=True); DATA.mkdir(parents=True,exist_ok=True)
 
-REFERENCE=LAB/'reference/25939744'
-MOVEMENT=LAB/'research/25939744/movement'
+BUILD=sys.argv[sys.argv.index('--build')+1] if '--build' in sys.argv else '25950029'
+REFERENCE=LAB/'reference'/BUILD
+MOVEMENT=LAB/'research'/BUILD/'movement'
 source=json.loads((REFERENCE/'source.json').read_text())
 for name,digest in source['dataHashes'].items():
     assert hashlib.sha256((REFERENCE/name).read_bytes()).hexdigest()==digest,name
@@ -27,7 +28,7 @@ for record in abilities.values():
 hero=heroes['hero_haze']
 names=set(hero['m_mapBoundAbilities'].values())
 names.add('citadel_ability_melee_parry')
-native=json.loads((LAB/'evidence/25939744-package-cvar-defaults.json').read_text())
+native=json.loads((LAB/'evidence'/f'{BUILD}-package-cvar-defaults.json').read_text())
 native.update(json.loads((MOVEMENT/'cvars.json').read_text()))
 assert all(v['sourceSha256']==source['clientSha256'] for v in native.values())
 model_data=(LAB/'evidence/model-data.txt').read_text(encoding='utf8')
@@ -57,7 +58,8 @@ if settings_path.exists():
         if key in allowed or key.startswith('citadel_crosshair_'):
             try:settings[key]=float(value)
             except ValueError:pass
-profile=dict(build=source['build'],clientVersion=6782,revision=11127865,date='2026-10-14',source=source,
+steam=dict(line.split('=',1) for line in (REFERENCE/'steam.inf').read_text().splitlines() if '=' in line)
+profile=dict(build=source['build'],clientVersion=int(steam['ClientVersion']),revision=int(steam['SourceRevision']),date=steam['VersionDate'],source=source,
              movementCharacter=json.loads((MOVEMENT/'profiles.json').read_text())['hero_haze'],
              hero=hero,abilities={k:abilities[k] for k in sorted(names) if k in abilities},
              nativeFloatDefaults=native,modelData=model_kv,modelKeys=model_keys,localInputSettings=settings,attachments=attachments,nativeAbilityDefaults=native_abilities)

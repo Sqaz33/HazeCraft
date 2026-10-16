@@ -9,6 +9,10 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.animal.golem.IronGolem;
 import java.nio.file.*;
 import com.google.gson.*;
+import dev.local.haze.client.mixin.KeyboardAccessor;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.input.KeyEvent;
+import org.lwjgl.glfw.GLFW;
 
 /** Real client oracle, entirely internal controls; no operating-system mouse/keyboard driving. */
 public final class HazeGameTest implements FabricClientGameTest {
@@ -35,15 +39,10 @@ public final class HazeGameTest implements FabricClientGameTest {
             require(context.computeOnClient(mc->HazeRenderer.renderedFrames>0),"Haze geometry never rendered");
             context.takeScreenshot("haze-01-idle");report.addProperty("idleRendered",true);
             context.runOnClient(mc->{
-                try {
-                    var field=HazeClient.class.getDeclaredField("movementKeys");field.setAccessible(true);
-                    var keys=(dev.local.haze.sim.movement.MovementKeys)field.get(null);
-                    keys.event(Controls.JUMP,true);keys.event(Controls.JUMP,false);
-                    keys.event(Controls.JUMP,true);keys.event(Controls.JUMP,false);
-                } catch(ReflectiveOperationException e){throw new RuntimeException(e);}
+                mc.setWindowActive(true);tap(mc,GLFW.GLFW_KEY_SPACE);tap(mc,GLFW.GLFW_KEY_SPACE);
             });
             context.waitTicks(1);
-            require(context.computeOnClient(mc->HazeClient.motion.airJumpUsed&&HazeClient.motion.velocity.y()>4),"Rapid double tap was lost in actual host travel");
+            require(context.computeOnClient(mc->HazeClient.motion.airJumpUsed&&HazeClient.motion.velocity.y()>12),"Rapid double tap was lost in actual keyboard/host travel");
             report.addProperty("rapidDoubleJump",true);
             context.waitFor(mc->HazeClient.motion.grounded&&mc.player.onGround(),100);
 
@@ -84,11 +83,44 @@ public final class HazeGameTest implements FabricClientGameTest {
             server.runOnServer(s->{var p=s.getPlayerList().getPlayers().getFirst();HazeMod.ACTORS.get(p.getUUID()).abilities.readyAt[0]=0;});
             context.runOnClient(mc->HazeLab.held=Controls.JUMP|Controls.DAGGER);context.waitTicks(1);context.runOnClient(mc->HazeLab.held=0);context.waitTicks(3);
             require(context.computeOnClient(mc->!mc.player.onGround()),"Jump failed");context.takeScreenshot("haze-08-jump");report.addProperty("jump",true);
-            context.runOnClient(mc->HazeLab.held=Controls.JUMP);context.waitTicks(1);
-            require(context.computeOnClient(mc->HazeClient.motion.airJumpUsed&&HazeClient.motion.velocity.y()>4),"Delayed double jump failed");
+            context.runOnClient(mc->{mc.setWindowActive(true);tap(mc,GLFW.GLFW_KEY_SPACE);});context.waitTicks(1);
+            require(context.computeOnClient(mc->HazeClient.motion.airJumpUsed&&HazeClient.motion.velocity.y()>12),"Space in air did not produce the native 525-unit bounce");
+            double bounceSpeed=context.computeOnClient(mc->HazeClient.motion.velocity.y());report.addProperty("airJumpMetersPerSecond",bounceSpeed);
             report.addProperty("delayedDoubleJump",true);context.runOnClient(mc->HazeLab.held=0);
 
             context.waitTicks(22);context.waitFor(mc->HazeClient.motion.grounded&&mc.player.onGround(),100);context.runOnClient(mc->HazeClient.motion.stamina=3);
+            server.runCommand("fill 5 64 -3 5 70 6 stone");server.runCommand("tp @p 4.45 64 0.5 0 0");context.waitTicks(3);
+            context.runOnClient(mc->{HazeClient.motion=new Motion(Retail.DATA,10);HazeLab.held=0;mc.setWindowActive(true);tap(mc,GLFW.GLFW_KEY_SPACE);});context.waitTicks(2);
+            context.runOnClient(mc->{mc.setWindowActive(true);tap(mc,GLFW.GLFW_KEY_SPACE);});context.waitTicks(1);
+            String wallState=context.computeOnClient(mc->"mode="+HazeClient.motion.mode+" wallJumps="+HazeClient.motion.wallJumps+" jump="+HazeClient.motion.jumpKind+" serial="+HazeClient.motion.jumpSerial+" v="+HazeClient.motion.velocity+" pos="+mc.player.position()+" wall="+HazeClient.motion.wall+" normal="+HazeClient.motion.wallNormal+" controls="+HazeClient.controls);
+            report.addProperty("sideWallState",wallState);
+            require(context.computeOnClient(mc->HazeClient.motion.wallJumps==1&&HazeClient.motion.velocity.x()<-5.5&&HazeClient.motion.velocity.y()>12),"Space beside a lateral wall failed to bounce away: "+wallState);
+            report.addProperty("sideWallJump",true);context.takeScreenshot("haze-side-wall-bounce");
+            context.waitFor(mc->HazeClient.motion.grounded,150);server.runCommand("fill 5 64 -3 5 70 6 air");
+
+            server.runCommand("tp @p -10.5 67 0.5 0 0");context.waitTicks(3);
+            context.runOnClient(mc->{HazeClient.motion=new Motion(Retail.DATA,10);HazeClient.motion.grounded=false;HazeLab.held=Controls.FORWARD|Controls.DASH;});context.waitTicks(1);
+            require(context.computeOnClient(mc->HazeClient.motion.mode==Motion.Mode.DASH_AIR),"Air dash did not start");
+            context.runOnClient(mc->{HazeLab.held=Controls.FORWARD;mc.setWindowActive(true);tap(mc,GLFW.GLFW_KEY_SPACE);});context.waitTicks(1);
+            require(context.computeOnClient(mc->HazeClient.motion.airJumpUsed&&HazeClient.motion.jumpKind==Motion.JumpKind.AIR&&HazeClient.motion.velocity.y()>12),"Space during early air dash was swallowed by the ground dash-jump window");
+            report.addProperty("earlyAirDashJump",true);context.runOnClient(mc->HazeLab.held=0);context.waitFor(mc->HazeClient.motion.grounded,150);
+
+            server.runCommand("gamemode creative @p");context.waitTicks(2);
+            context.runOnClient(mc->{HazeClient.motion=new Motion(Retail.DATA,10);mc.setWindowActive(true);tap(mc,GLFW.GLFW_KEY_SPACE);});context.waitTicks(2);
+            context.runOnClient(mc->{mc.setWindowActive(true);tap(mc,GLFW.GLFW_KEY_SPACE);});context.waitTicks(1);
+            require(context.computeOnClient(mc->!mc.player.getAbilities().flying&&HazeClient.motion.airJumpUsed&&HazeClient.motion.velocity.y()>12),"Creative flight consumed Space in air");
+            report.addProperty("creativeAirJump",true);context.waitFor(mc->HazeClient.motion.grounded,150);server.runCommand("gamemode survival @p");
+
+            context.runOnClient(mc->{HazeClient.motion=new Motion(Retail.DATA,10);HazeLab.held=Controls.FORWARD|Controls.DASH;});context.waitTicks(1);
+            context.runOnClient(mc->HazeLab.held=Controls.FORWARD);context.waitTicks(5);
+            context.runOnClient(mc->{HazeLab.held=Controls.FORWARD|Controls.CROUCH;mc.setWindowActive(true);tap(mc,GLFW.GLFW_KEY_SPACE);});context.waitTicks(1);
+            require(context.computeOnClient(mc->HazeClient.motion.jumpKind==Motion.JumpKind.DASH&&!HazeClient.motion.grounded),"Ground dash-jump did not start in its native window");
+            context.waitFor(mc->HazeClient.motion.mode==Motion.Mode.SLIDE,150);
+            require(context.computeOnClient(mc->HazeClient.motion.velocity.horizontal()>10),"Dash-jump landing lost slide momentum");
+            report.addProperty("dashJumpLandingSlide",true);context.takeScreenshot("haze-dash-jump-landing-slide");
+            context.runOnClient(mc->HazeLab.held=0);context.waitTicks(25);
+
+            server.runCommand("tp @p 0.5 64 0.5 0 0");context.waitTicks(3);context.runOnClient(mc->HazeClient.motion=new Motion(Retail.DATA,10));
             context.runOnClient(mc->HazeLab.held=Controls.FORWARD|Controls.DASH);context.waitTicks(1);
             context.runOnClient(mc->HazeLab.held=Controls.FORWARD|Controls.CROUCH);context.waitTicks(7);
             context.takeScreenshot("haze-slide-mid");
@@ -106,11 +138,11 @@ public final class HazeGameTest implements FabricClientGameTest {
             report.addProperty("slideInfiniteAmmo",true);context.takeScreenshot("haze-slide-infinite-ammo");
 
             context.runOnClient(mc->HazeLab.held=0);context.waitTicks(20);
-            server.runCommand("fill -1 64 2 -1 66 8 stone");server.runCommand("fill 1 64 2 1 66 8 stone");server.runCommand("fill 0 66 2 0 66 8 stone");
-            server.runCommand("tp @p 0.5 64 0.5 0 0");context.waitTicks(3);
+            server.runCommand("fill -1 64 2 -1 67 8 stone");server.runCommand("fill 2 64 2 2 67 8 stone");server.runCommand("fill 0 67 2 1 67 8 stone");
+            server.runCommand("tp @p 1 64 0.5 0 0");context.waitTicks(3);
             context.runOnClient(mc->{HazeClient.motion=new Motion(Retail.DATA);mc.player.setYRot(0);mc.player.setXRot(0);HazeLab.held=Controls.FORWARD;});context.waitTicks(30);
             context.runOnClient(mc->HazeLab.held=0);
-            require(context.computeOnClient(mc->mc.player.getZ()>8),"Haze movement hull cannot cross a one-block corridor");context.takeScreenshot("haze-corridor-exit");report.addProperty("nativeHullCorridor",true);
+            require(context.computeOnClient(mc->mc.player.getZ()>8),"Haze capsule cannot cross a corridor with native clearance");context.takeScreenshot("haze-corridor-exit");report.addProperty("nativeCapsuleCorridor",true);
             server.runCommand("fill 8 64 2 8 65 5 stone");server.runCommand("tp @p 8.5 64 0.5 0 0");context.waitTicks(3);
             context.runOnClient(mc->{HazeClient.motion=new Motion(Retail.DATA);mc.player.setYRot(0);HazeLab.held=Controls.FORWARD;});context.waitTicks(16);
             require(context.computeOnClient(mc->HazeClient.motion.wall),"Mantle scene did not contact ledge");
@@ -128,4 +160,10 @@ public final class HazeGameTest implements FabricClientGameTest {
         HazeMod.LOG.info("HAZE_LAB_PASS {}",report);
     }
     private static void require(boolean condition,String message){if(!condition)throw new AssertionError(message);}
+    private static void tap(Minecraft mc,int key){
+        var keyboard=(KeyboardAccessor)mc.keyboardHandler;
+        KeyEvent event=new KeyEvent(key,0,0);
+        keyboard.haze$keyPress(mc.getWindow().handle(),GLFW.GLFW_PRESS,event);
+        keyboard.haze$keyPress(mc.getWindow().handle(),GLFW.GLFW_RELEASE,event);
+    }
 }

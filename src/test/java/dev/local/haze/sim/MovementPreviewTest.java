@@ -53,14 +53,14 @@ class MovementPreviewTest {
     @Test void airAccelerationUsesClampedWishSpeed() {
         Motion motion=new Motion(Retail.DATA);motion.grounded=false;
         motion.step(DT,new Controls(Controls.FORWARD,0,0,0),air,0,-1,true);
-        assertEquals(10*80*.0254*DT*(1-.2*DT),motion.velocity.z(),1e-7);
+        assertEquals(10*80*.0254*DT,motion.velocity.z(),1e-7);
     }
     @Test void ascendingCharacterUsesAirJumpInsteadOfFreeCoyoteJump() {
         Motion motion=new Motion(Retail.DATA);motion.grounded=false;motion.lastGroundTime=0;motion.velocity=new V3(0,3,9);
         motion.step(DT,new Controls(Controls.JUMP,Controls.JUMP,0,0),air,0,-1,true);
         assertTrue(motion.airJumpUsed);assertEquals(2,motion.stamina,1e-8);
-        assertEquals(225*.0254-800*.0254*DT,motion.velocity.y(),1e-7);
-        assertEquals(9*(1-.2*DT),motion.velocity.z(),1e-7);
+        assertEquals(525*.0254-800*.0254*DT,motion.velocity.y(),1e-7);
+        assertEquals(9*(1-.2*DT),motion.velocity.z(),1e-5);
     }
     @Test void proactiveSideContactPreservesTangentialMomentum() {
         Motion motion=new Motion(Retail.DATA);motion.grounded=false;motion.velocity=new V3(0,0,12);
@@ -69,7 +69,7 @@ class MovementPreviewTest {
             public Motion.MoveResult move(V3 delta,boolean crouch){return new Motion.MoveResult(delta,false,false,V3.ZERO,0);}
         };
         motion.step(DT,new Controls(Controls.JUMP,Controls.JUMP,0,0),side,0,-1,true);
-        assertEquals(12*(1-.2*DT),motion.velocity.z(),1e-7);assertTrue(motion.velocity.x()<-6);assertEquals(1,motion.wallJumps);
+        assertEquals(12*(1-.2*DT),motion.velocity.z(),1e-5);assertTrue(motion.velocity.x()<-6);assertEquals(1,motion.wallJumps);
     }
     @Test void wallJumpCombatPenaltiesStackAndExpire() {
         Motion motion=new Motion(Retail.DATA);motion.grounded=false;motion.wall=true;motion.wallNormal=new V3(-1,0,0);

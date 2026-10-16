@@ -158,7 +158,7 @@ entries with all prior 110 values unchanged. Cvar extraction now respects partia
 register widths and stops at the name's registration call.
 
 
-## 2026-10-15 — 0.2.0 movement preview, user-requested integration checkpoint
+## 2026-10-15 â€” 0.2.0 movement preview, user-requested integration checkpoint
 
 User explicitly requested packaging accumulated findings now and finishing the
 movement model only on a later instruction. Stopped new native exploration.
@@ -195,7 +195,7 @@ qualified busy-action queue and native mantle probes. UI radial drawing and host
 collision remain adaptations. No upload or public remote was used.
 
 
-## 2026-10-15 — 0.2.1 dash exit fix and requested fast stamina
+## 2026-10-15 â€” 0.2.1 dash exit fix and requested fast stamina
 
 User scope: fix stopping in mid-air after dash and enable fast stamina regen only.
 Root cause: final partial dash displacement was divided by the whole substep,
@@ -221,7 +221,7 @@ evidence/25939744-dash-fix-build.log. Delivered one 0.2.1 JAR. The old preview
 was no longer in dist, so a binary asset comparison against it was unavailable.
 
 
-## 2026-10-15 — 0.2.2 rapid double jump and infinite slide ammo
+## 2026-10-15 â€” 0.2.2 rapid double jump and infinite slide ammo
 
 User requested a quick double-jump fix, then added infinite ammo in slide.
 The host input adapter collapsed two Space down transitions in one 50ms frame
@@ -252,3 +252,55 @@ active, existing model/knife locomotion, dash/slide, mantle, abilities and Steve
 toggle. Inspected the slide screenshot with the infinity HUD indicator. Logs:
 private evidence/25939744-jump-slide-fix-build.log and -client.log. Final one-JAR
 package CRC validation passes. No public upload or full movement-model work.
+
+
+## 2026-10-16 â€” resumed source investigation and air-jump root cause
+
+User explicitly resumes full authentic movement research/implementation after
+rejecting the double-jump fixes. Current Steam source advanced to 25950029/6785.
+Pinned new binaries/data; added relocation-candidate tooling and current private
+Ghidra function exports. Native air-jump oracle proves +75% bonus converts to
+1.75, giving 525 rather than the old 225 Source up speed. Added JumpImpulse and
+120-case native parity test; integrated corrected impulse and removed erroneous
+air-dash -> dash-jump routing. The first build passes this new parity test but
+fails an old test's obsolete 225 expectation; corrected that expectation.
+
+Work is ongoing; no replacement JAR or full-fidelity claim yet. Preserve 10x
+stamina regen, slide infinity and the model/root fix. Remaining immediate work:
+current data/default migration, real keyboard-handler air-jump verification,
+native drag/dash/wall/slide/math oracles, timestamped input, capsule/support
+collision and full movement state transitions. Private outputs live under
+D:/DeadlockHazeLab/decompiled/25950029 and research/25950029/movement. No live
+Deadlock process or network gameplay is used.
+
+
+Oct 16 checkpoint: new native air drag/acceleration/wall impulse helpers and
+oracles, composed air-dash trace parity, current profiles/defaults, capsule plus
+support/ground-box adapter, scoped server geometry validation, ordered timed
+input, creative-flight isolation, jump event sounds and current graph bindings
+are implemented. All 75 software tests pass. First real client passes including
+true KeyboardHandler Space and native-strength bounce; expanded lateral wall
+case currently fails. Added diagnostics and investigating it before packaging.
+See MOVEMENT_RESEARCH.md Oct 16 checkpoint for corrected constants/qualification.
+No source assets/binaries committed, no uploads, no live Deadlock attachment.
+
+
+## 2026-10-16 â€” 0.3.0 movement preview
+
+User requested immediate packaging before full movement completion. Frame-end
+Space taps now apply actions without advancing physics. Lateral contact cannot
+incorrectly enter forward mantle; capsule state resets after external teleports.
+Preserved 10x regeneration, slide infinite ammo and model/root/knife fixes.
+Movement data now uses build 25950029. Full fidelity remains unfinished.
+
+Build and all 76 software tests pass. Final 49-second real Minecraft run passes
+rapid/delayed keyboard Space, 13.332899 m/s air bounce, side-wall bounce,
+early-air-dash jump, creative air jump without flight, dash-jump landing slide,
+empty-magazine server slide fire, capsule corridor, two-block mantle, abilities,
+knife locomotion and Steve toggle. Wall/slide screenshots inspected. This
+supersedes the preceding failed wall checkpoint. Evidence: private
+25950029-movement-final-client.log and client-report.json.
+
+Package: dist/deadlock-haze-0.3.0-movement-preview.jar, 28,312,350 bytes.
+SHA256 871e02db0c95bcb3e3c65cd7a3e63df40885c7bc1475e48ff5fb51baa1240c09.
+No retail source assets/binaries committed, no uploads or live Deadlock attachment.

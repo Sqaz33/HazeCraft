@@ -11,7 +11,7 @@ public final class HazeView {
     public static void reset(){aiming=false;aimStarted=0;aimInitial=aimFov=Retail.DATA.nativeFloat("citadel_camera_hero_fov");}
     public static Parameters parameters(float partial) {
         Retail d=Retail.DATA;ClientState s=HazeClient.own();Motion m=HazeClient.motion;
-        boolean crouch=HazeClient.controls.down(Controls.CROUCH),aim=HazeClient.controls.down(Controls.AIM);
+        boolean crouch=m!=null?m.ducked:HazeClient.controls.down(Controls.CROUCH),aim=HazeClient.controls.down(Controls.AIM);
         double back=Retail.number(d.camera.get("m_flCameraBackOffset"));
         double side=Retail.number(d.camera.get("m_flCameraSideOffset"));
         double height=Retail.number(d.camera.get(crouch?"m_flCameraHeightCrouching":"m_flCameraHeightStanding"));

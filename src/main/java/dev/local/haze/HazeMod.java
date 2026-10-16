@@ -42,6 +42,6 @@ public final class HazeMod implements ModInitializer {
                 var f=actor.targets.get(entity.getId());if(f!=null)f.damaged(dev.local.haze.sim.Retail.DATA,actor.abilities.ranks[0],actor.abilities.time);
             }
         });
-        LOG.info("Haze local port, source Deadlock build 25917577, protocol {}",HazeProtocol.VERSION);
+        LOG.info("Haze local port, source Deadlock build {}, protocol {}",dev.local.haze.sim.Retail.DATA.root.get("build").getAsString(),HazeProtocol.VERSION);
     }
 }

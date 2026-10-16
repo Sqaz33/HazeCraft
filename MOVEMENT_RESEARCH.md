@@ -549,9 +549,143 @@ writes no longer invent unknown upper bits, and a name is associated with its
 first following registration call instead of later constructor calls.
 
 
-## Integration checkpoint � 0.2.0 movement preview
+## Integration checkpoint — 0.2.0 movement preview
 
 On 2026-10-15 the user requested a runnable build now and deferred finishing the
 movement model until a later instruction. Research is paused at that boundary.
 See MODLOG.md and docs/CONTRACT.md for the exact integrated subset, test evidence
 and remaining limitations. This preview is not a parity-complete controller.
+
+
+## 2026-10-16 — investigation resumed, current build 25950029
+
+The user rejected the previous double-jump fix and requested completion of the
+movement investigation and a faithful replacement. Earlier packaging checkpoint
+is superseded; do not call the movement complete or offer the 0.2.2 JAR as fixed.
+Steam now has build 25950029, client/server 6785, revision 11132425. New immutable
+client/server/engine2 and three VData files are pinned externally. Client SHA256
+fadaf78301af6d47d286de6199d1fd0aba7053f6ab597afa3de55369f72424c6.
+Five common movement VData records are unchanged, while full heroes/abilities
+files differ; generic_data is unchanged. 281/429 earlier function prefixes map
+uniquely after masking relocations. Prefix matches alone are navigation evidence,
+not proof that the whole function is unchanged. New current-build function bodies
+are exported privately. Ghidra stack-probe fixup was migrated to 0x1824bf950.
+
+CRITICAL CORRECTION: air jump is NOT 300 * .75 = 225 Source units/s. Original
+current function 0x18024ce40 calls cached VerticalSpeed at ability+0x18b8, then
+aggregates MODIFIER_VALUE_BONUS_JUMP_VERTICAL_SPEED_PERCENT (136). Its registered
+getter 0x180242040 reads AirJumpVerticalSpeedPercent at ability+0x1a18 while
+ability+0x1750 is active. Converter 0x18131abe0 computes max(0,(value+100)*.01).
+Haze's +75 therefore yields 300*1.75 = 525 Source units/s (13.335 m/s).
+Prior research notes and tests using 225 are superseded. The property cache
+registration is verified in current constructor 0x18023b2a0, string addresses
+0x1825b4a70=VerticalSpeed and 0x1825b4a98=AirJumpVerticalSpeedPercent.
+
+New offline oracle executes the entire original air-jump impulse function plus
+original clamp/max/percentage conversion, with supplied game-object getters, one
+raw registered bonus value and skipped presentation/resource events. 120 cases
+cover six input velocities, five wishes and four percentage values. Original
+results include 525 for Haze. No impulse or percentage arithmetic is mocked.
+Eligibility/resource policy is explicitly outside that oracle. Fixture:
+research/25950029/movement/native-air-jump-cases.json. Generic JumpImpulse matches
+all cases. Source-native air dash state is 46; ground dash is 41. The old Java
+controller wrongly routed both through dash-jump timing and swallowed an ordinary
+jump in an air dash. Current classifier 0x18024c330 defaults an airborne jump to
+air-jump unless explicit ALLOW_AIR_DASH_JUMP (202) is set.
+
+Other newly audited points: gravity/drag/acceleration ordering is drag before
+acceleration in 0x18088c0f0; air-dash's 1 -> .2 value is a speed/acceleration cap
+callback (0x180252d40), NOT a velocity multiplier on exit. Air dash uses ordinary
+air acceleration with the -40% acceleration callback, gravity suppression and
+horizontal input rewritten into dash heading. Existing constant displacement is
+still an approximation. Wall jump adds outward impulse after removing inward
+normal velocity; it does not cap an existing outward component at that impulse.
+The .6 wall-normal mix blends the full normal with its flattened projection;
+helpers 0x180287aa0 and 0x180251e00 prove this. It is not a guessed cardinal corner
+snap. Full wall/collision/slide/input integration remains under active work.
+
+
+### Oct 16 implementation checkpoint — current source, not a fidelity completion
+
+All movement data/defaults are now revalidated against 25950029 / client 6785,
+revision 11132425. The current export has 68 character records and 19 proven
+omitted defaults. Two newly recovered dash fields are DuringDrag=1 at 0x1818
+and PostMaxDrag=4 at 0x1824. VData GroundDashAirbornDrag=.7 is a different field;
+it must not be substituted for DuringDrag. VData PostDrag is not the registered
+PostMaxDrag member. Constructors and named schema registrations are retained.
+
+Current original-code oracle results: 120 air impulses, 432 horizontal air-drag
+cases, 288 ordinary air-acceleration cases, 200 wall impulses. A further 12
+composed air-dash trajectories cover 1101 frames: native drag/acceleration run
+as x64; the audited callbacks supply direction, cap, gravity suppression and
+post-drag. This composition is not a live Deadlock trajectory. All prior 1847
+native helper cases retain their original older build/hash rather than being
+silently re-labelled. All 76 software tests currently pass.
+
+Corrections to provisional wall notes above: native constant 1825ba400 is 100,
+not -2. Wall jumps retain .3*vertical velocity whenever the post-inward-removal
+vertical component is below 100 Source units/s, including small positive values.
+The lateral curve argument is abs(alongSpeed) times +1 for same-sign desired
+lateral/current speed, otherwise -1, NOT .5. The original 200-case oracle caught
+both errors. Full contact normal is blended .6 with its unnormalized horizontal
+projection .4, then normalized. Existing outward speed is retained plus impulse.
+
+Air drag happens before acceleration. Its forward basis is initialized to
+(1,0,0,0) by 1801eb280 copying constant 182703200 to 183e7e570. Its tangent is
+built from the forward-projected velocity, so exactly zero forward projection
+has a zero tangent; this surprising branch was executed in the original kernel.
+Air control uses horizontal speed, and stop-speed drag uses max(speed,100).
+Air dash does not enforce an 8 m displacement: it changes wish speed/acceleration,
+with a decaying cap. Last active callback already sets wish/up/gravity flags even
+when it unregisters the modifier that frame. No extra .2 exit velocity impulse.
+Distance termination uses displacement from the start, not cumulative path.
+
+Host adapter now uses a capsule (step 32, radius 20, upper center 80 Source units),
+a separate ground box and the verified support spring. The ground box half-width
+is radius*sqrt(2)*.2. Its center starts at origin+step+radius; its downward range
+adds radius to step*.2 ascending, step*1.05 falling, or step*2.05 grounded. The
+extra radius comes from shape output index 6 (the decompiler originally showed
+an apparently uninitialized adjacent stack float). End-ground query is a separate
+tail function 18087fc00; typing it avoids misleading inlined stack output.
+Minecraft voxel shapes feed the geometry adapter. Continuous capsule/AABB sweeps,
+penetration resolution and plane clipping replace vanilla blocked-axis movement.
+This adapter is an independently implemented geometry query, not an identical
+copy of Source 2's shape engine/contact manifold. Ground slopes currently come
+from spaced support samples; the full native slope variance/probe path remains
+unmatched. Source collision tolerances, manifold order, steep/moving surfaces and
+all action/busy/queue interactions still need end-to-end confirmation.
+
+Input now preserves ordered button transitions with fractional timing inside the
+host frame. Frame-end transitions apply actions with zero elapsed physics time,
+so short Space taps do not wait for another host tick. The server validates capsule geometry for
+Haze rather than reverting valid rounded-corner movement through an AABB check.
+Creative flight handling is disabled only while Haze owns movement; previous
+flight state is restored on returning to Steve. A native jump serial drives
+sound even when the mode stays AIR. 10x user-requested regeneration and slide ammo
+infinity remain deliberate deviations from the source and are not data defaults.
+
+Current jump animation bindings were re-exported from the owned VPK. Haze ground,
+air and dash jumps all bind jump_ground; invisible variants bind jump_invis_start.
+Wall jumps share directional air-dash clips, proven by the graph comparisons.
+Bindings and graph hashes are in the ignored movement-animation.json. The
+skeletal streams themselves remain the earlier converted owned model, with the
+existing root-motion/knife mask fix retained.
+
+Final real Minecraft run passes actual KeyboardHandler rapid/delayed Space,
+525-unit air bounce (observed 13.332899 m/s), lateral wall bounce, early-air-dash
+jump, creative air jump without flight, dash-jump landing slide, capsule corridor,
+two-block mantle, server slide fire from an empty/reloading magazine, knife
+locomotion, abilities and Steve toggle. The earlier lateral-wall failure was
+a forward-mantle qualification bug; input must face into the contact normal.
+External teleports also clear old capsule spring/velocity. All 76 tests pass.
+Final wall-bounce and landing-slide screenshots inspected. Evidence: private
+25950029-movement-preview-build.log, 25950029-movement-final-client.log and
+client-report.json.
+
+
+Immediate delivery requested by user: 0.3.0-movement-preview, one private JAR
+with bundled Fabric API. 28,312,350 bytes; SHA256
+871e02db0c95bcb3e3c65cd7a3e63df40885c7bc1475e48ff5fb51baa1240c09.
+Full movement fidelity remains unfinished: source slope/contact tolerances,
+all action/busy interactions, native prediction and exact HUD/camera presentation
+still require work. Passing these scenarios does not establish full parity.

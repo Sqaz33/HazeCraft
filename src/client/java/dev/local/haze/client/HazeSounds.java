@@ -60,8 +60,12 @@ public final class HazeSounds {
             for(int cycle=first;cycle<=Math.min(last,first+1);cycle++)if(before<at+cycle*duration&&time>=at+cycle*duration)play(event.get("sound").getAsString(),entity);
         }
     }
-    public static void movement(Motion.Mode before,Motion m,Controls controls,Entity e){
-        if(before!=m.mode){String event=switch(m.mode){case DASH_GROUND->"Player.Dash.Ground";case DASH_AIR->"Player.Dash.Air";case MANTLE->"Haze.Mantle";case AIR->controls.edge(Controls.JUMP)?"Player.Jump":"";default->before==Motion.Mode.AIR?"Haze.JumpLand":"";};if(!event.isEmpty())play(event,e);}
+    public static void movement(Motion.Mode before,long jumpBefore,Motion m,Controls controls,Entity e){
+        if(jumpBefore!=m.jumpSerial){
+            String key=switch(m.jumpKind){case GROUND->"m_GroundJumpExecutedSound";case AIR->"m_AirJumpSound";case WALL->"m_WallJumpExecutedSound";case DASH->"m_strDashJumpSound";};
+            play(Retail.DATA.ability("citadel_ability_jump").get(key).getAsString(),e);
+        }
+        if(before!=m.mode){String event=switch(m.mode){case DASH_GROUND->"Player.Dash.Ground";case DASH_AIR->"Player.Dash.Air";case MANTLE->"Haze.Mantle";case AIR->"";default->before==Motion.Mode.AIR?"Haze.JumpLand":"";};if(!event.isEmpty())play(event,e);}
         if(controls.edge(Controls.PARRY))play("Player.Melee.Parry.Shared",e);
         if(controls.down(Controls.AIM)!=aimed){aimed=controls.down(Controls.AIM);play(aimed?"Haze.Wpn.ZoomIn":"Haze.Wpn.ZoomOut",e);}
     }

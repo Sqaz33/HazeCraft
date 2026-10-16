@@ -77,6 +77,11 @@ public class HazeDecompileTargets extends GhidraScript {
                         new ParameterImpl("moveData",LongLongDataType.dataType,currentProgram),
                         new ParameterImpl("dt",FloatDataType.dataType,currentProgram));
                 }
+                if(parts[2].equals("motionend")){
+                    function.setCallingConvention("__fastcall");function.setReturnType(VoidDataType.dataType,SourceType.USER_DEFINED);
+                    function.replaceParameters(Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,true,SourceType.USER_DEFINED,
+                        new ParameterImpl("movement",LongLongDataType.dataType,currentProgram),new ParameterImpl("moveData",LongLongDataType.dataType,currentProgram));
+                }
                 int count=parts[2].equals("bias")?2:parts[2].equals("remap")?5:0;
                 if(count>0){
                     Parameter[] parameters=new Parameter[count];for(int i=0;i<count;i++)parameters[i]=new ParameterImpl("value"+i,FloatDataType.dataType,currentProgram);

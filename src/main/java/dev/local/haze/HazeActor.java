@@ -31,6 +31,7 @@ public final class HazeActor {
     public Controls input=Controls.NONE;
     public int lastSequence=-1,inputAge;
     private double oldMaxHealth,oldHealth,meleeHeld,meleeReady,parryReady,parryUntil,combatUntil;
+    private boolean oldFlying;
     public String action="idle";
     public double actionTime;
     public double daggerStarted=-100;
@@ -42,9 +43,11 @@ public final class HazeActor {
         active=!active;
         if(active) {
             dimension=p.level().dimension();
+            oldFlying=p.getAbilities().flying;p.getAbilities().flying=false;p.onUpdateAbilities();
             oldMaxHealth=p.getAttribute(Attributes.MAX_HEALTH).getBaseValue();oldHealth=p.getHealth();
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(DATA.stat("EMaxHealth"));p.setHealth((float)DATA.stat("EMaxHealth"));
         } else {
+            p.getAbilities().flying=oldFlying&&p.getAbilities().mayfly;p.onUpdateAbilities();
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(oldMaxHealth);if(p.isAlive())p.setHealth((float)Math.min(oldHealth,p.getMaxHealth()));
             p.setInvisible(false);input=Controls.NONE;projectiles.clear();traces.clear();
             clearStatuses(p.level());targets.clear();

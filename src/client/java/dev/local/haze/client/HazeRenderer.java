@@ -46,7 +46,7 @@ public final class HazeRenderer {
             String clip=chooseClip(state,motion,own?HazeClient.controls:Controls.NONE);
             double time=state.time+partial*0.05;
             if(clip.contains("reload")&&asset.clips.containsKey(clip))time=asset.clips.get(clip).duration()*Math.min(1,(Retail.DATA.weapon().get("m_reloadDuration").getAsDouble()-state.reload+partial*0.05)/Retail.DATA.weapon().get("m_reloadDuration").getAsDouble());
-            if(clip.contains("dash")&&motion!=null)time=motion.time-motion.dashStart+partial*0.05;
+            if(clip.contains("dash")&&motion!=null)time=motion.time-(motion.mode==Motion.Mode.AIR&&motion.jumpKind==Motion.JumpKind.WALL?motion.jumpStart:motion.dashStart)+partial*0.05;
             if(clip.contains("mantle")&&motion!=null)time=motion.time-motion.mantleStart+partial*0.05;
             if((clip.endsWith("jump_ground")||clip.endsWith("jump_invis_start"))&&motion!=null)time=motion.time-motion.jumpStart+partial*0.05;
             if(clip.contains("slide")&&motion!=null){time=motion.time-motion.slideStart+partial*0.05;if(clip.endsWith("slide_loop"))time-=asset.clips.get("models/heroes_staging/haze/clips/slide_start").duration();}
@@ -89,12 +89,13 @@ public final class HazeRenderer {
         if(m!=null) {
             switch(m.mode) {
                 case DASH_GROUND: return prefix+"dash_ground";
-                case DASH_AIR: return prefix+"dash_air_"+(c.down(Controls.LEFT)?"left":c.down(Controls.RIGHT)?"right":c.down(Controls.BACK)?"back":"forward");
+                case DASH_AIR: return AnimationSource.movementClip(s.smoke,"dash_air_"+m.dashFacing);
                 case SLIDE: return prefix+(m.time-m.slideStart<asset.clips.get(prefix+"slide_start").duration()?"slide_start":"slide_loop");
                 case MANTLE: return prefix+"mantle_"+m.mantleHeight;
                 case AIR:
-                    String jump=s.smoke?"jump_invis_start":"jump_ground";
-                    return prefix+(m.time-m.jumpStart<asset.clips.get(prefix+jump).duration()?jump:s.smoke?"jump_invis_in_air_loop":"in_air_loop_down");
+                    String jump=AnimationSource.movementClip(s.smoke,m.jumpKind==Motion.JumpKind.WALL?"dash_air_"+m.jumpFacing:
+                        m.jumpKind==Motion.JumpKind.AIR?"jump_air":m.jumpKind==Motion.JumpKind.DASH?"jump_dash":"jump_ground");
+                    return m.time-m.jumpStart<asset.clips.get(jump).duration()?jump:AnimationSource.movementClip(s.smoke,"in_air_loop_down");
                 default: break;
             }
             if(m.velocity.horizontal()>0.2) {

@@ -22,7 +22,10 @@ with zipfile.ZipFile(source) as jar:
                   'dev/local/haze/client/mixin/KeyboardMixin.class',
                   'dev/local/haze/client/mixin/LocalMovementMixin.class']:
         jar.getinfo(entry)
-    assert json.loads(jar.read('haze/retail/profile.json'))['build'] == '25939744'
+    assert json.loads(jar.read('haze/retail/profile.json'))['build'] == '25950029'
+    jar.getinfo('haze/retail/movement-animation.json')
+    jar.getinfo('dev/local/haze/sim/movement/JumpImpulse.class')
+    jar.getinfo('dev/local/haze/sim/movement/CapsuleMover.class')
 destination = root / 'dist' / source.name
 destination.parent.mkdir(exist_ok=True)
 shutil.copy2(source, destination)

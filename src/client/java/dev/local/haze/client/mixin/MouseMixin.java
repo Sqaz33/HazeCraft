@@ -19,8 +19,10 @@ public abstract class MouseMixin {
         double sensitivity=Retail.number(input.get("sensitivity"));
         if(HazeClient.controls.down(Controls.AIM))sensitivity*=Retail.number(input.get("zoom_sensitivity_ratio"));
         // Player.turn multiplies its arguments by 0.15 degrees. Preserve raw Source counts.
+        float before=mc.player.getYRot();
         mc.player.turn(accumulatedDX*sensitivity*Retail.number(input.get("m_yaw"))/0.15,
             accumulatedDY*sensitivity*Retail.number(input.get("m_pitch"))/0.15);
+        if(HazeClient.motion!=null)HazeClient.motion.rotateView(mc.player.getYRot()-before);
         ci.cancel();
     }
 }

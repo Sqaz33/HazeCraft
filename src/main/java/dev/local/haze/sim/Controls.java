@@ -1,6 +1,9 @@
 package dev.local.haze.sim;
 
-public record Controls(int held, int pressed, float yaw, float pitch, int jumpPresses) {
+public record Controls(int held, int pressed, float yaw, float pitch, int jumpPresses,int initialHeld,java.util.List<TimedButton> events) {
+    public record TimedButton(double offset,int button,boolean down){}
+    public Controls { events=java.util.List.copyOf(events); }
+    public Controls(int held,int pressed,float yaw,float pitch,int jumpPresses){this(held,pressed,yaw,pitch,jumpPresses,held,java.util.List.of());}
     public Controls(int held,int pressed,float yaw,float pitch) {
         this(held,pressed,yaw,pitch,(pressed&JUMP)!=0?1:0);
     }

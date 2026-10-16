@@ -31,6 +31,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     private static CameraType previousCamera;
     private static MovementClock movementClock=new MovementClock();
     private static MovementKeys movementKeys=new MovementKeys();
+    private static PlayerCollision playerCollision;
     private static void clearInput() { controls=Controls.NONE;previous=0;movementKeys=new MovementKeys();movementClock.clearInputs(); }
     public static void keyboard(int key,int action) {
         Minecraft mc=Minecraft.getInstance();
@@ -124,33 +125,44 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         ClientState state=own();
         double bonus=state!=null&&state.smoke?Retail.DATA.prop("ability_smoke_bomb","InvisMoveSpeedMod",state.ranks[1]):0;
         double cap=state!=null&&state.flurry?Retail.DATA.prop("ability_bullet_flurry","ChannelMoveSpeed",state.ranks[3]):-1;
-        Motion.Collision collision=new PlayerCollision(p);
+        if(playerCollision==null||playerCollision.p!=p||playerCollision.owner!=motion)playerCollision=new PlayerCollision(p,motion);
+        Motion.Collision collision=playerCollision;
         Motion.Mode before=motion.mode;
+        long jumpBefore=motion.jumpSerial;
         movementClock.advance(.05,controls,(dt,input)->motion.step(dt,input,collision,bonus,cap,state!=null&&state.inCombat));
         if((before==Motion.Mode.SLIDE)!=(motion.mode==Motion.Mode.SLIDE))send(HazeProtocol.SLIDE_STATE_COMMAND,0);
-        HazeSounds.movement(before,motion,controls,p);
+        HazeSounds.movement(before,jumpBefore,motion,controls,p);
+        p.setOnGround(motion.grounded);
         p.setDeltaMovement(HazeActor.mc(motion.velocity.mul(0.05)));p.fallDistance=0;p.setSprinting(false);
         return true;
     }
     private static final class PlayerCollision implements Motion.Collision {
         private final LocalPlayer p;
-        PlayerCollision(LocalPlayer p){this.p=p;}
+        private final Motion owner;
+        private final CapsuleMover mover=HazeCollisionWorld.create();
+        private final HazeCollisionWorld world;
+        PlayerCollision(LocalPlayer p,Motion owner){this.p=p;this.owner=owner;world=new HazeCollisionWorld(p);}
+        @Override public boolean canStand(){
+            var shape=mover.shape(false);V3 origin=HazeActor.of(p.position());
+            for(var box:world.boxes(shape.bounds(origin)))if(CapsuleMover.contact(shape,origin,box).separation()<-1e-6)return false;
+            return true;
+        }
         @Override public V3 wallContact() {
-            double skin=Retail.DATA.field("citadel_ability_jump","m_flCollidedWallMaxDist")*Retail.SOURCE_UNIT;
-            AABB body=p.getBoundingBox().deflate(.005,.05,.005);
-            V3 normal=V3.ZERO;
-            if(!p.level().noCollision(p,body.move(skin,0,0)))normal=normal.add(new V3(-1,0,0));
-            if(!p.level().noCollision(p,body.move(-skin,0,0)))normal=normal.add(new V3(1,0,0));
-            if(!p.level().noCollision(p,body.move(0,0,skin)))normal=normal.add(new V3(0,0,-1));
-            if(!p.level().noCollision(p,body.move(0,0,-skin)))normal=normal.add(new V3(0,0,1));
-            return normal.normalized();
+            return mover.wallContact(HazeActor.of(p.position()),p.getPose()==Pose.CROUCHING,world);
         }
         @Override public Motion.MoveResult move(V3 delta,boolean crouch) {
+            return move(delta,crouch,owner.velocity,.015625);
+        }
+        @Override public Motion.MoveResult move(V3 delta,boolean crouch,V3 velocity,double dt) {
             p.setPose(crouch?Pose.CROUCHING:Pose.STANDING);
-            Vec3 before=p.position();p.move(MoverType.SELF,HazeActor.mc(delta));Vec3 diff=p.position().subtract(before);
-            double nx=Math.abs(diff.x-delta.x())>1e-7?-Math.signum(delta.x()):0;
-            double nz=Math.abs(diff.z-delta.z())>1e-7?-Math.signum(delta.z()):0;
-            return new Motion.MoveResult(HazeActor.of(diff),p.onGround(),nx!=0||nz!=0,new V3(nx,0,nz).normalized(),0);
+            V3 before=HazeActor.of(p.position());
+            // Ground dash and mantle supply displacement instead of ordinary velocity.
+            boolean scripted=owner.mode==Motion.Mode.DASH_GROUND||owner.mode==Motion.Mode.MANTLE;
+            var result=mover.move(before,scripted?delta.mul(1/dt):velocity,owner.grounded,crouch,dt,world,owner.mode==Motion.Mode.MANTLE);
+            V3 actual=result.position().sub(before);p.setPos(HazeActor.mc(result.position()));
+            boolean wall=result.wallNormal().length()>0;
+            p.setOnGroundWithMovement(result.grounded(),wall,HazeActor.mc(actual));p.verticalCollisionBelow=result.grounded();
+            return new Motion.MoveResult(actual,result.grounded(),wall,result.wallNormal(),result.slope(),result.velocity());
         }
         @Override public V3 mantle(V3 direction,double maxHeight) {
             if(direction.length()==0)return null;

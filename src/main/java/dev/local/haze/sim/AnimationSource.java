@@ -8,9 +8,12 @@ import java.util.*;
 /** Bindings and bone weights copied from the installed Haze animation graphs. */
 public final class AnimationSource {
     public static final JsonObject DATA=load();
+    public static final JsonObject MOVEMENT=loadMovement();
     private static final Map<String,Map<String,Float>> MASKS=new HashMap<>();
     static {DATA.getAsJsonObject("masks").entrySet().forEach(e->{Map<String,Float> weights=new HashMap<>();e.getValue().getAsJsonObject().entrySet().forEach(w->weights.put(w.getKey(),w.getValue().getAsFloat()));MASKS.put(e.getKey(),Map.copyOf(weights));});}
     private static JsonObject load(){try(var in=AnimationSource.class.getResourceAsStream("/haze/retail/animation-graph.json")){if(in==null)throw new IllegalStateException("Missing original animation graph");return JsonParser.parseReader(new InputStreamReader(in,StandardCharsets.UTF_8)).getAsJsonObject();}catch(IOException e){throw new UncheckedIOException(e);}}
+    private static JsonObject loadMovement(){try(var in=AnimationSource.class.getResourceAsStream("/haze/retail/movement-animation.json")){if(in==null)throw new IllegalStateException("Missing current movement graph");return JsonParser.parseReader(new InputStreamReader(in,StandardCharsets.UTF_8)).getAsJsonObject();}catch(IOException e){throw new UncheckedIOException(e);}}
+    public static String movementClip(boolean invisible,String node){return MOVEMENT.getAsJsonObject("variants").getAsJsonObject(invisible?"haze_invis":"haze").get(node).getAsString();}
     public static Map<String,Float> mask(String name){var mask=MASKS.get(name);if(mask==null)throw new IllegalArgumentException("Unknown original bone mask: "+name);return mask;}
     public static double headingTime(SkinnedAsset asset,String clip,double heading){
         var range=DATA.getAsJsonObject("headingInput");double min=range.get("m_flBegin").getAsDouble(),max=range.get("m_flEnd").getAsDouble();

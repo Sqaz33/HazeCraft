@@ -8,7 +8,7 @@ import org.joml.Matrix4f;
 class RetailSimulationTest {
     private static final Retail D=Retail.DATA;
     @Test void pinnedOctoberBuildAndNativeDefaults(){
-        assertEquals("25939744",D.root.get("build").getAsString());
+        assertEquals("25950029",D.root.get("build").getAsString());
         assertEquals(730,D.stat("EMaxHealth"));assertEquals(8.2,D.stat("EMaxMoveSpeed"));
         assertEquals(800,D.nativeFloat("sv_gravity"));assertEquals(90,D.nativeFloat("citadel_camera_hero_fov"));
         assertEquals(103,D.camera.get("m_flCameraBackOffset").getAsDouble());

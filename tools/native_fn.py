@@ -49,7 +49,9 @@ for address in a.address:
   row={'address':hex(ins.address),'mnemonic':ins.mnemonic,'operands':ins.op_str}
   for op in ins.operands:
    if op.type==capstone.x86.X86_OP_MEM and op.mem.base==capstone.x86.X86_REG_RIP:
-    dest=ins.address+ins.size+op.mem.disp;blob=pe.get_data(dest-base,120)if dest>=base else b''
+    dest=ins.address+ins.size+op.mem.disp
+    try:blob=pe.get_data(dest-base,120)if base<=dest<base+pe.OPTIONAL_HEADER.SizeOfImage else b''
+    except pefile.PEFormatError:blob=b''
     row['rip_va']=hex(dest)
     if len(blob)>=4:
      value=struct.unpack('<f',blob[:4])[0]
