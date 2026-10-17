@@ -1,6 +1,10 @@
+param([string]$JavaHome = $env:JAVA_HOME)
 $ErrorActionPreference = 'Stop'
-$env:JAVA_HOME = 'D:/Projects/ExpeditionCraft/work/toolchains/temurin25/jdk-25.0.4.1+1'
-$env:PATH = "$env:JAVA_HOME/bin;$env:PATH"
+if ($JavaHome) {
+    if (!(Test-Path -LiteralPath (Join-Path $JavaHome 'bin\javac.exe'))) { throw 'JavaHome must point to an installed JDK 21 or newer.' }
+    $env:JAVA_HOME = $JavaHome
+    $env:PATH = "$JavaHome\bin;$env:PATH"
+}
 Push-Location $PSScriptRoot
 try {
     & ./gradlew.bat build --console=plain

@@ -11,3 +11,7 @@ src/main/resources/assets/haze/sounds/retail/
 private/
 tools/__pycache__/
 dist/
+.env
+.env.*
+!.env.example
+*.pyc
