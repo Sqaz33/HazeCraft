@@ -12,6 +12,7 @@ public final class Gun {
     public int ammo;
     public double reloadRemaining, bloom, recoil, clock, nextShot;
     public long shotCount;
+    public double itemBaseDamage;
     public double itemClipPercent,itemClipFlat,itemWeaponPercent,itemReloadPercent,itemRangePercent;
     private final SplittableRandom random;
     public record Shot(double time, double yawOffset, double pitchOffset, double damage) {}
@@ -46,7 +47,7 @@ public final class Gun {
             double radius=Math.sqrt(random.nextDouble())*spread,angle=random.nextDouble()*Math.PI*2;
             double yaw=Math.cos(angle)*radius,pitch=Math.sin(angle)*radius;
             double kick=f("m_flVerticalPunch")*(sliding?0.5:1);
-            shots.add(new Shot(nextShot,yaw,pitch,f("m_flBulletDamage")*(1+itemWeaponPercent/100)+damageBonus));
+            shots.add(new Shot(nextShot,yaw,pitch,(f("m_flBulletDamage")+itemBaseDamage)*(1+itemWeaponPercent/100)+damageBonus));
             if (!infiniteClip && !sliding) ammo--;
             bloom+=f("m_flShootSpreadPenaltyPerShot"); recoil+=kick; shotCount++;
             nextShot+=cycle;

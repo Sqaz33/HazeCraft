@@ -159,7 +159,7 @@ public final class HazeHud {
         g.pose().popMatrix();
         if(s.itemBarrier>0)text(g,"ЩИТ "+(int)s.itemBarrier,left+30,849,22,"radiance",0xff85d9ed,false);
         image(g,"hud/core/spirit_jar_frame_png.png",left+30,875,60,60,color("offWhite"));
-        text(g,"1",left+62.5F,896,28,"mono",color("offWhite"),true);
+        text(g,""+s.level,left+62.5F,896,28,"mono",color("offWhite"),true);
         image(g,"hud/icons/icon_soul.png",left+88,889,20,36,color("shardColor"));
         text(g,"∞",left+114,889,32,"oracle",color("blueAPTextColor"),false);
         text(g,HudSource.loc("Citadel_Hero_Stats_Souls").toUpperCase(Locale.ROOT),left+145,909,14,"radiance",0x66ffefd7,false);

@@ -6,6 +6,7 @@ import dev.local.haze.sim.ItemInventory;
 import java.util.*;
 
 public final class ClientState {
+    public final int level;public final JsonObject characterStats;
     public final UUID uuid;
     public final int entityId;
     public final boolean active,invisible,smoke,flurry,inCombat;
@@ -32,6 +33,7 @@ public final class ClientState {
     public final double[][] effects;
     public record Stack(int id,int count,boolean sleep) {}
     public ClientState(JsonObject j) {
+        level=j.has("level")?j.get("level").getAsInt():1;characterStats=j.has("characterStats")?j.getAsJsonObject("characterStats"):new JsonObject();
         uuid=UUID.fromString(j.get("uuid").getAsString());entityId=j.get("id").getAsInt();active=j.get("active").getAsBoolean();
         invisible=j.get("invisible").getAsBoolean();smoke=j.get("smoke").getAsBoolean();flurry=j.get("flurry").getAsBoolean();
         inCombat=j.get("inCombat").getAsBoolean();

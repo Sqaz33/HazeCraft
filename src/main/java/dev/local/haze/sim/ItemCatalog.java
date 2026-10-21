@@ -8,6 +8,20 @@ import java.util.*;
 public final class ItemCatalog {
     public record Item(String id,String name,String icon,String description,int tier,int price,String category,boolean active,List<String> components,Map<String,Double> stats,JsonObject data){
         public double property(String key){var p=data.getAsJsonObject("m_mapAbilityProperties").getAsJsonObject(key);if(p==null||!p.has("m_strValue"))return 0;try{return Retail.number(p.get("m_strValue"));}catch(Exception e){return 0;}}
+        public double scaled(String key,double spirit,double weapon){
+            double result=property(key);var props=data.getAsJsonObject("m_mapAbilityProperties");var p=props.getAsJsonObject(key);
+            if(p!=null&&p.has("m_subclassScaleFunction")){var f=p.getAsJsonObject("m_subclassScaleFunction");
+                if(f.has("m_flStatScale")&&f.has("m_eSpecificStatScaleType")){String stat=f.get("m_eSpecificStatScaleType").getAsString();result+=Retail.number(f.get("m_flStatScale"))*(stat.equals("ETechPower")?spirit:stat.equals("EBaseWeaponDamageIncrease")?weapon:0);}}
+            return result;
+        }
+        public String targeting(){return data.has("m_nAbilityTargetTypes")?data.get("m_nAbilityTargetTypes").getAsString():"";}
+        public boolean accepts(UnitRole role){
+            String t=targeting();if(t.isEmpty())return role.damageable();
+            if(role.friendly())return t.contains("ALL_FRIENDLY")||t.contains("HERO_FRIENDLY");
+            if(role==UnitRole.ENEMY_HERO)return t.contains("ALL_ENEMY")||t.contains("HERO_ENEMY");
+            return role==UnitRole.CREEP&&(t.contains("ALL_ENEMY")||t.contains("CREEP_ENEMY")||t.contains("TROOPER_ENEMY")||t.contains("NEUTRAL")||t.contains("MINION_ENEMY"));
+        }
+        public double field(String name){try{return Retail.number(data.get(name));}catch(Exception e){return 0;}}
     }
     public static final Map<String,Item> ITEMS=load();
     public static final Set<String> APPLIED=Set.of("BonusHealth","BonusBaseHealth","MaxHealthLossPercent","BonusHealthRegen","OutOfCombatHealthRegen","BaseAttackDamagePercent","BonusFireRate","BonusClipSizePercent","BonusClipSize","ReloadSpeedMultipler","BonusAttackRangePercent","SpiritPower","TechPower","CooldownReduction","BonusAbilityDurationPercent","TechRangeMultiplier","BonusBulletSpeedPercent","NonPlayerBonusWeaponPower","BulletLifestealPercent","BonusMeleeDamagePercent","BonusMoveSpeed","BonusSprintSpeed","Stamina","StaminaCooldownReduction","BulletResist","MeleeResistPercent");

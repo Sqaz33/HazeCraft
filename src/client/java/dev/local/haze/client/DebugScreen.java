@@ -11,7 +11,7 @@ import java.util.function.Supplier;
 
 /** Creative-only controls grouped by the subsystem being checked. */
 public final class DebugScreen extends Screen {
-    private static final String[] TABS={"Здоровье","Движение","Умения","Оружие","Цели"};
+    private static final String[] TABS={"Здоровье","Движение","Умения","Оружие","Цели","Персонаж"};
     private static int lastTab;
     private int tab=lastTab,left,top,panelWidth,panelHeight,rowHeight,contentTop;
     private String notice="Изменения действуют сразу. F8 / Esc — вернуться в игру.";
@@ -36,12 +36,12 @@ public final class DebugScreen extends Screen {
         rowHeight=Math.max(16,Math.min(27,(panelHeight-104)/6));contentTop=top+78;
         var mode=addRenderableWidget(Button.builder(Component.literal(""),b->HazeClient.send(1)).bounds(left+panelWidth-110,top+6,100,18).build());
         bindings.add(new Binding(mode,()->HazeClient.active?"Haze → Стив":"Включить Haze"));
-        int tabWidth=(panelWidth-20)/5;
-        for(int i=0;i<5;i++){
+        int tabWidth=(panelWidth-20)/TABS.length;
+        for(int i=0;i<TABS.length;i++){
             final int next=i;var button=addRenderableWidget(Button.builder(Component.literal(TABS[i]),b->{tab=lastTab=next;rebuildWidgets();}).bounds(left+10+i*tabWidth,top+29,tabWidth-2,18).build());
             button.active=i!=tab;
         }
-        switch(tab){case 0->health();case 1->movement();case 2->abilities();case 3->weapon();case 4->targets();}
+        switch(tab){case 0->health();case 1->movement();case 2->abilities();case 3->weapon();case 4->targets();case 5->character();}
     }
     private Button button(int row,int column,int columns,Supplier<String> label,String hint,Runnable action,boolean hazeOnly){
         int cell=(panelWidth-20)/columns;
@@ -67,6 +67,12 @@ public final class DebugScreen extends Screen {
         hazeButtons.add(apply);
         if(action==DebugAction.TARGET_STACKS)targetButtons.add(apply);
         if(action==DebugAction.MAX_HEALTH)field.setTooltip(Tooltip.create(Component.literal("От 1 до 1024 HP — диапазон здоровья Minecraft.")));
+    }
+    private void character(){
+        number(0,"Уровень персонажа",state()==null?1:state().level,DebugAction.CHARACTER_LEVEL);
+        int max=new CharacterProgression().maximum();int[] levels={1,10,20,max};
+        for(int i=0;i<levels.length;i++)action(1,i,levels.length,"Уровень "+levels[i],"Рост характеристик из таблицы Haze",DebugAction.CHARACTER_LEVEL,levels[i]);
+        button(3,0,1,()->"Все текущие характеристики","Характеристики с сервера с учётом предметов и усилений",()->Minecraft.getInstance().setScreen(new CharacterStatsScreen(this)),true);
     }
     private void health(){
         int[] values={1,10,25,50,75,100};

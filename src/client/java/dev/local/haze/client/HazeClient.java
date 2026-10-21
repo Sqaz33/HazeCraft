@@ -56,6 +56,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
             case GLFW.GLFW_KEY_LEFT_CONTROL->Controls.CROUCH;case GLFW.GLFW_KEY_F->Controls.PARRY;
             case GLFW.GLFW_KEY_Q->Controls.MELEE;default->0;
         };
+        if(key==GLFW.GLFW_KEY_I&&action==GLFW.GLFW_PRESS){clearInput();send(0);mc.setScreen(new CharacterStatsScreen(null));return;}
         if(bit!=0)movementKeys.event(bit,action==GLFW.GLFW_PRESS);
     }
     public static boolean shopKey(long window,int key,int action){

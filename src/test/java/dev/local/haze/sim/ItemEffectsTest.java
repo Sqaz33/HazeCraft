@@ -4,7 +4,8 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 class ItemEffectsTest {
     static final class World implements ItemEffects.Host {
-        double hp=300,healed,damage,reloaded,warp,impulse;int refresh,cleanse,statuses;boolean hasTarget=true;
+        double hp=300,healed,damage,reloaded,warp,impulse;int refresh,cleanse,statuses;boolean hasTarget=true;UnitRole targetRole=UnitRole.ENEMY_HERO;
+        public UnitRole role(int t){return t==0?UnitRole.SELF:targetRole;}
         public double health(){return hp;}public double maxHealth(){return 730;}
         public void heal(double n){healed+=n;hp=Math.min(730,hp+n);}public void drain(double n){hp-=n;}
         public int target(double range){return hasTarget?1:-1;}public List<Integer> nearby(double r,int c){return List.of(1,2);}
@@ -23,7 +24,7 @@ class ItemEffectsTest {
     @Test void tributeTogglesDrainsAndRemovesBuffOnSale(){var e=item("upgrade_blood_tribute");var h=new World();e.use(0,h);assertEquals(35,e.bonus("BonusFireRate",100));e.tick(.1,h);assertEquals(295,h.hp);e.use(0,h);assertEquals(0,e.bonus("BonusFireRate",100));e.use(0,h);e.inventory.sell("upgrade_blood_tribute");assertEquals(0,e.bonus("BonusFireRate",100));}
     @Test void healingIsSpreadAcrossOriginalDuration(){var e=item("upgrade_health_nova");var h=new World();e.use(0,h);e.tick(.25,h);assertEquals(0,h.healed);for(int i=0;i<35;i++)e.tick(.05,h);assertTrue(h.healed<=325);assertTrue(h.healed>250);}
     @Test void headshotBonusUsesItsOwnCooldownAndRangeDamageIsConditional(){var e=item("upgrade_headshot_booster");var h=new World();assertEquals(55,e.onBullet(1,10,true,5,100,h));assertEquals(10,e.onBullet(1,10,true,5,100,h));var close=item("upgrade_close_range");assertEquals(12,close.onBullet(1,10,false,5,100,h),1e-6);assertEquals(10,close.onBullet(1,10,false,20,100,h));}
-    @Test void meleeHasHealingDamageAndProcCooldown(){var e=item("upgrade_lifestrike_gauntlets");var h=new World();e.onMelee(1,true,h);assertEquals(30,h.healed);e.onMelee(1,true,h);assertEquals(30,h.healed);e.tick(9,h);e.onMelee(1,true,h);assertEquals(60,h.healed);}
-    @Test void allEnabledActivesAcceptInputAndProduceFiniteCooldowns(){for(var i:ItemCatalog.ITEMS.values())if(i.active()){var e=item(i.id());var h=new World();assertTrue(e.use(0,h),i.id());e.tick(1,h);assertTrue(Double.isFinite(e.cooldown(i.id())),i.id());assertTrue(Double.isFinite(h.damage),i.id());}}
+    @Test void meleeHasHealingDamageAndProcCooldown(){var e=item("upgrade_lifestrike_gauntlets");var h=new World();h.targetRole=UnitRole.CREEP;e.onMelee(1,true,h);assertEquals(30,h.healed);e.onMelee(1,true,h);assertEquals(30,h.healed);e.tick(9,h);e.onMelee(1,true,h);assertEquals(60,h.healed);}
+    @Test void allEnabledActivesAcceptInputAndProduceFiniteCooldowns(){for(var i:ItemCatalog.ITEMS.values())if(i.active()){var e=item(i.id());var h=new World();if(i.id().equals("upgrade_non_player_bonus_sacrifice"))h.targetRole=UnitRole.CREEP;assertTrue(e.use(0,h),i.id());e.tick(1,h);assertTrue(Double.isFinite(e.cooldown(i.id())),i.id());assertTrue(Double.isFinite(h.damage),i.id());}}
     @Test void sellingBuffedItemStopsItsEffect(){var e=item("upgrade_fleetfoot_boots");var h=new World();e.use(0,h);assertEquals(3,e.bonus("BonusMoveSpeed",100));e.inventory.sell("upgrade_fleetfoot_boots");assertEquals(0,e.bonus("BonusMoveSpeed",100));}
 }

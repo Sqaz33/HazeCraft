@@ -564,3 +564,16 @@ and barrier HUD. Source values from each item's full m_mapAbilityProperties;
 no game files added to Git. Scope/fidelity gaps recorded in SHOP_STATUS.md.
 Owner stopped all testing mid-turn: subsequent build excluded test, no game
 controls or automatic gameplay checks. Direct launch only for owner testing.
+
+## 2026-10-21 — source recovery, actor roles, levels and live stats
+Cloned owner-provided Sqaz33/HazeCraft into D:/Projects/HazeCraft. Restored
+ignored private resources from owner's installed 0.3.13 JAR. Universal Modder
+scan: installed Source 2 Deadlock, client 6807/revision 11154106, Oct 20 2026.
+Read-only VPK extraction + VRF 20.1: abilities/heroes/generic_data into
+D:/HazeCraftLab/reference/6807. All 156 enabled item IDs and raw property
+values unchanged from 6785; source nested definitions refreshed privately.
+Added owner-specified UnitRole/TargetRules, villager-target healing/barriers,
+level table growth (1..36), I live server stat panel, F8 character controls.
+Fixed Torment Pulse cooldown/target cap from actual item data (1.4 s, 2).
+Targeted Item/CharacterProgression suites and compileClientJava passed.
+This does not establish native-code parity for all item rules.
