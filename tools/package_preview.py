@@ -47,6 +47,8 @@ with zipfile.ZipFile(source) as jar:
     jar.getinfo('dev/local/haze/client/ShopScreen.class')
     catalog=json.loads(jar.read('haze/retail/items.json'))
     assert len(catalog['items'])==156
+    jar.getinfo('dev/local/haze/sim/PermanentPickups.class')
+    assert len(json.loads(jar.read('haze/retail/pickups.json'))['pickups'])==30
     for item in catalog['items']:jar.getinfo('assets/haze/retail/'+item['icon'])
 destination = root / 'dist' / source.name
 destination.parent.mkdir(exist_ok=True)

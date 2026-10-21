@@ -74,6 +74,7 @@ public final class HazeActor {
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(DATA.stat("EMaxHealth"));p.setHealth((float)DATA.stat("EMaxHealth"));
             applyItems(p);
         } else {
+            saveItems(p);
             debugLockHealth=false;debugMaxHealth=0;
             melee.cancel();
             p.getAbilities().flying=oldFlying&&p.getAbilities().mayfly;p.onUpdateAbilities();

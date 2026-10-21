@@ -624,3 +624,13 @@ the match clock; native RNG order and timing under interrupts are not proven.
 Private derived pickups.json remains ignored; repeatable prepare_pickups.py
 committed without game data. 24 targeted tests passed, including six new
 pickup/egg scenarios and source rules for more than five other items.
+
+### Stage 5 — owner-requested immediate playable build
+0.3.15-goose-rewards: save on mode exit and validate the new private pickup
+resource in packaging. Full Gradle build passed: 160 discovered, 146 passed,
+14 skipped missing private replay fixtures, zero failures/errors. No automated
+game controls. Buildup research located EBuildUpRate enum 52, inverse property
+scaling (0x180b95c72), normalized fill/duration modes (0x1805970f0), weapon
+rate read (0x180baee20). The final default weapon-rate resolver is not yet
+established; the old approximation is explicitly still pending.
+Private JAR SHA256: 298f5a377a86b04b3b171d33197eacd054af6ca997e826295514f0ecc2a9f7d4.
