@@ -19,13 +19,14 @@ import java.util.*;
 
 public final class HazeActor {
     private static final Retail DATA=Retail.DATA;
+    private static final ResourceKey<DamageType> MELEE=ResourceKey.create(Registries.DAMAGE_TYPE,Identifier.fromNamespaceAndPath("haze","melee"));
     private static final ResourceKey<DamageType> SPIRIT=ResourceKey.create(Registries.DAMAGE_TYPE,Identifier.fromNamespaceAndPath("haze","spirit"));
     private static final ResourceKey<DamageType> BULLET=ResourceKey.create(Registries.DAMAGE_TYPE,Identifier.fromNamespaceAndPath("haze","bullet"));
     public final UUID owner;
     public boolean active;
     public boolean debugNoCooldowns;
     public boolean debugInfiniteAmmo,debugLockHealth;
-    private float debugHealth;
+    private float debugHealth;private double debugMaxHealth;
     private int debugTargetId=-1;
     public net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension;
     public final Gun gun=new Gun(DATA);
@@ -42,6 +43,7 @@ public final class HazeActor {
     private final List<HealthSteal> healthSteals=new ArrayList<>();private long nextHealthSteal;
     private final Map<Integer,Double> focusedDamage=new HashMap<>();
     private final Map<Integer,Vec3> itemZonePoints=new HashMap<>();
+    private double meleeDamageDealt;
     private int itemAbilityContext=-1;
     private boolean itemDamage,incomingEnemyHero;private int nextItemPoint=-3;
     private boolean itemsLoaded;
@@ -72,12 +74,12 @@ public final class HazeActor {
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(DATA.stat("EMaxHealth"));p.setHealth((float)DATA.stat("EMaxHealth"));
             applyItems(p);
         } else {
-            debugLockHealth=false;
+            debugLockHealth=false;debugMaxHealth=0;
             melee.cancel();
             p.getAbilities().flying=oldFlying&&p.getAbilities().mayfly;p.onUpdateAbilities();
             p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(oldMaxHealth);if(p.isAlive())p.setHealth((float)Math.min(oldHealth,p.getMaxHealth()));
             p.setInvisible(false);input=Controls.NONE;projectiles.clear();traces.clear();
-            clearStatuses(p.level());targets.clear();
+            clearStatuses(p.level());targets.clear();var size=p.getAttribute(Attributes.SCALE);if(size!=null)size.removeModifier(Identifier.fromNamespaceAndPath("haze","colossus_scale"));
         }
         p.refreshDimensions();
     }
@@ -100,7 +102,7 @@ public final class HazeActor {
         input=new Controls(packet.held()&0x3ffff,packet.pressed()&0x1ffff,packet.yaw(),Math.max(-89,Math.min(89,packet.pitch())));
     }
     public void tick(ServerPlayer p) {
-        if(!p.isCreative()){debugNoCooldowns=false;debugInfiniteAmmo=false;debugLockHealth=false;}
+        if(!p.isCreative()){debugNoCooldowns=false;debugInfiniteAmmo=false;debugLockHealth=false;debugMaxHealth=0;}
         if(!active) return;
         if(debugNoCooldowns)abilities.clearCooldowns();
         if(dimension!=p.level().dimension()) { var old=p.level().getServer().getLevel(dimension);if(old!=null)clearStatuses(old);targets.clear();dimension=p.level().dimension(); }
@@ -125,7 +127,7 @@ public final class HazeActor {
             else if(abilities.cast(3)){itemEffects.onCast(3,itemHost(p));setAction("flurry");}
         }
         if(input.edge(Controls.PARRY) && abilities.time>=parryReady) {
-            parryReady=abilities.time+DATA.prop("citadel_ability_melee_parry","AbilityCooldown",0);
+            parryReady=abilities.time+Math.max(0,DATA.prop("citadel_ability_melee_parry","AbilityCooldown",0)-items.stat("ParryCooldownReduction"));
             itemEffects.beginParry(itemHost(p));parryUntil=abilities.time+DATA.field("citadel_ability_melee_parry","m_flActiveTime");setAction("parry");
         }
         for(int sub=0;sub<6;sub++) {
@@ -133,7 +135,7 @@ public final class HazeActor {
             long strikeBefore=melee.strikeSerial,actionBefore=melee.serial;
             melee.step(dt/6,input,p.onGround(),input.down(Controls.SLIDING)&&input.down(Controls.CROUCH),!itemEffects.busy()&&!abilities.flurry()&&abilities.time>=parryUntil);
             if(input.edge(Controls.PARRY))melee.cancel();
-            if(melee.serial!=actionBefore){abilities.breakSmoke();setAction("melee_charge");}
+            if(melee.serial!=actionBefore){abilities.breakSmoke();itemEffects.breakInvisibility();setAction("melee_charge");}
             if(melee.dashing()&&meleeContact(p))melee.strike();
             if(melee.strikeSerial!=strikeBefore)melee(p);
             if(debugNoCooldowns)abilities.clearCooldowns();
@@ -142,11 +144,11 @@ public final class HazeActor {
             double rate=(flurry?abilities.p(3,"BonusFireRate"):0)+itemStat(p,"BonusFireRate");
             double bonus=flurry?abilities.p(3,"WeaponDamageBonus"):0;
             if(input.edge(Controls.RELOAD)) {
-                if(gun.reloadRemaining>0&&items.owned.contains("upgrade_active_reload")){var i=ItemCatalog.ITEMS.get("upgrade_active_reload");double progress=1-gun.reloadRemaining/(gun.f("m_reloadDuration")/Math.max(.1,1+gun.itemReloadPercent/100));if(progress>=.4&&progress<=.6&&itemEffects.proc(i,i.property("AbilityCooldown"))){gun.ammo=gun.clipSize(0);gun.reloadRemaining=0;itemEffects.activateBuff(i,i.property("AbilityDuration"));}}
-                else gun.reload(0);setAction("reload"); }
+                if(gun.reloadRemaining>0&&items.owned.contains("upgrade_active_reload")){var i=ItemCatalog.ITEMS.get("upgrade_active_reload");double progress=1-gun.reloadRemaining/(gun.reloadDuration());if(progress>=.4&&progress<=.6&&itemEffects.proc(i,i.property("AbilityCooldown"))){gun.ammo=gun.clipSize(abilities.itemSpirit);gun.reloadRemaining=0;itemEffects.activateBuff(i,i.property("AbilityDuration"));}}
+                else gun.reload(abilities.itemSpirit);setAction("reload"); }
             boolean fire=!itemEffects.busy()&&input.down(Controls.FIRE) && abilities.daggerAt<0 && !melee.active() && abilities.time>=parryUntil;
             boolean slide=input.down(Controls.SLIDING)&&input.down(Controls.CROUCH);
-            for(Gun.Shot shot:gun.advance(dt/6,fire||flurry,input.down(Controls.AIM),flurry||debugInfiniteAmmo,slide,rate,bonus,0)) {
+            for(Gun.Shot shot:gun.advance(dt/6,fire||flurry,input.down(Controls.AIM),flurry||debugInfiniteAmmo,slide,rate,bonus,abilities.itemSpirit)) {
                 itemEffects.onShot();if(gun.shotCount%2==0)lastLeftShot=abilities.time;else lastRightShot=abilities.time;
                 if(fire){abilities.breakSmoke();itemEffects.breakInvisibility();}
                 if(flurry) flurryShot(p,shot);
@@ -155,7 +157,7 @@ public final class HazeActor {
             }
             advanceProjectiles(p,dt/6);
         }
-        p.setInvisible(abilities.invisible()||items.owned.contains("upgrade_cloaking_device_active")&&itemEffects.invisibleUntil>itemEffects.time);
+        p.setInvisible(abilities.invisible()||itemEffects.invisible());
         if(debugLockHealth)p.setHealth(Math.max(1,Math.min(debugHealth,p.getMaxHealth())));
         else if(p.getHealth()<p.getMaxHealth()) p.heal((float)((DATA.stat("EBaseHealthRegen")+items.stat("BonusHealthRegen")+(!inCombat()?items.stat("OutOfCombatHealthRegen"):0))*dt));
         applyStatuses(p);
@@ -181,23 +183,26 @@ public final class HazeActor {
     }
     private void applyItems(ServerPlayer p){
         double ratio=p.getHealth()/p.getMaxHealth();double max=((DATA.stat("EMaxHealth")+progression.bonus("MODIFIER_VALUE_BASE_HEALTH_FROM_LEVEL"))*(1+items.stat("BonusBaseHealth")/100)+itemStat(p,"BonusHealth"))*(1+items.stat("MaxHealthLossPercent")/100);
+        if(debugMaxHealth>0)max=debugMaxHealth;
         if(Math.abs(p.getMaxHealth()-max)>.01){p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(Math.max(1,max));p.setHealth((float)Math.max(1,p.getMaxHealth()*ratio));}
         gun.itemBaseDamage=progression.bonus("MODIFIER_VALUE_BASE_BULLET_DAMAGE_FROM_LEVEL");
         gun.itemClipPercent=items.stat("BonusClipSizePercent");gun.itemClipFlat=itemStat(p,"BonusClipSize");gun.itemWeaponPercent=itemStat(p,"BaseAttackDamagePercent");
-        gun.itemReloadPercent=itemStat(p,"ReloadSpeedMultipler");gun.itemRangePercent=items.stat("BonusAttackRangePercent");gun.ammo=Math.min(gun.ammo,gun.clipSize(0));
-        abilities.itemSpirit=(progression.bonus("MODIFIER_VALUE_TECH_POWER")+itemStat(p,"SpiritPower")+itemStat(p,"TechPower")+items.stat("SpiritPowerInnate"))*(1+items.stat("TechPowerPercent")/100);abilities.itemCharges=(int)items.stat("BonusAbilityCharges");abilities.itemChargeReduction=items.reduction("CooldownBetweenChargeReduction");abilities.itemChargeCooldownReduction=items.reduction("CooldownReductionOnChargedAbilities");abilities.itemUltimateReduction=items.reduction("UltimateCooldownReduction");java.util.Arrays.fill(abilities.itemImbuedSpirit,0);for(String id:items.owned)abilities.itemImbuedSpirit[items.bound(id)]+=ItemCatalog.ITEMS.get(id).stats().getOrDefault("ImbuedTechPower",0D);abilities.itemWeaponPercent=gun.itemWeaponPercent;
+        gun.itemReloadPercent=itemStat(p,"ReloadSpeedMultipler");gun.itemRangePercent=items.stat("BonusAttackRangePercent");gun.ammo=Math.min(gun.ammo,gun.clipSize(abilities.itemSpirit));
+        abilities.itemSpirit=(progression.bonus("MODIFIER_VALUE_TECH_POWER")+itemStat(p,"SpiritPower")+itemStat(p,"TechPower")+items.stat("SpiritPowerInnate"))*(1+items.stat("TechPowerPercent")/100);int extraCharges=(int)items.stat("BonusAbilityCharges");if(extraCharges>abilities.itemCharges)abilities.smokeCharges+=extraCharges-abilities.itemCharges;abilities.itemCharges=extraCharges;abilities.itemChargedSpirit=items.stat("BonusSpiritForChargedAbilities");abilities.itemChargeReduction=items.reduction("CooldownBetweenChargeReduction");abilities.itemChargeCooldownReduction=items.reduction("CooldownReductionOnChargedAbilities");abilities.itemUltimateReduction=items.reduction("UltimateCooldownReduction");java.util.Arrays.fill(abilities.itemImbuedSpirit,0);for(String id:items.owned)abilities.itemImbuedSpirit[items.bound(id)]+=ItemCatalog.ITEMS.get(id).stats().getOrDefault("ImbuedTechPower",0D);abilities.itemWeaponPercent=gun.itemWeaponPercent;
         abilities.itemCooldownReduction=items.reduction("CooldownReduction");abilities.itemDurationPercent=items.stat("BonusAbilityDurationPercent");abilities.itemRangePercent=items.stat("TechRangeMultiplier");
-        abilities.itemRadiusPercent=items.stat("TechRadiusMultiplier");
+        var scale=p.getAttribute(Attributes.SCALE);if(scale!=null){var id=Identifier.fromNamespaceAndPath("haze","colossus_scale");boolean grow=itemEffects.buff("upgrade_colossus");if(grow&&!scale.hasModifier(id))scale.addTransientModifier(new AttributeModifier(id,ItemCatalog.ITEMS.get("upgrade_colossus").property("ModelScaleGrowth")-1,AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));if(!grow)scale.removeModifier(id);}
+        abilities.itemRadiusPercent=items.stat("TechRadiusMultiplier");melee.itemDistanceScale=items.stat("MeleeDistanceScale");
     }
     public void debug(HazeProtocol.Debug packet,ServerPlayer p){
         DebugAction op=DebugAction.fromId(packet.action());
         if(op==null||!DebugAction.allowed(p.isCreative(),active))return;
         int value=packet.value();
         switch(op){
+            case VEIL_EVENT -> itemEffects.onVeilCrossed(itemHost(p));
             case CHARACTER_LEVEL -> {progression.set(value);applyItems(p);}
             case HEALTH_PERCENT,HEALTH_VALUE -> {debugHealth=DebugAction.health(value,p.getMaxHealth(),op==DebugAction.HEALTH_PERCENT);p.setHealth(debugHealth);}
             case MAX_HEALTH -> {
-                p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(DebugAction.bounded(value,1,1024));
+                debugMaxHealth=value==0?0:DebugAction.bounded(value,1,1_000_000);applyItems(p);
                 debugHealth=Math.max(1,Math.min(p.getHealth(),p.getMaxHealth()));p.setHealth(debugHealth);
             }
             case LOCK_HEALTH -> {debugLockHealth=!debugLockHealth;debugHealth=p.getHealth();}
@@ -206,8 +211,8 @@ public final class HazeActor {
             case ABILITY_RANK -> {if(value>=0&&value<16)abilities.debugRank(DebugAction.abilityIndex(value),DebugAction.abilityRank(value));}
             case STOP_ABILITIES -> {abilities.debugStop();melee.cancel();projectiles.removeIf(Projectile::dagger);daggerStarted=-100;p.setInvisible(false);setAction("idle");}
             case INFINITE_AMMO -> {debugInfiniteAmmo=!debugInfiniteAmmo;if(debugInfiniteAmmo)gun.reloadRemaining=0;}
-            case AMMO -> {gun.ammo=DebugAction.bounded(value,0,gun.clipSize(0));gun.reloadRemaining=0;}
-            case RELOAD -> {gun.reload(0);if(gun.reloadRemaining>0)setAction("reload");}
+            case AMMO -> {gun.ammo=DebugAction.bounded(value,0,gun.clipSize(abilities.itemSpirit));gun.reloadRemaining=0;}
+            case RELOAD -> {gun.reload(abilities.itemSpirit);if(gun.reloadRemaining>0)setAction("reload");}
             case SPAWN_TARGET,SPAWN_GROUP -> {
                 int count=op==DebugAction.SPAWN_GROUP?5:1;
                 var existing=ownedTargets(p);
@@ -257,7 +262,7 @@ public final class HazeActor {
     private void debug(int command,ServerPlayer p) {
         switch(command) {
             case HazeProtocol.DEBUG_REFILL -> {
-                p.setHealth(p.getMaxHealth());gun.ammo=gun.clipSize(0);gun.reloadRemaining=0;gun.bloom=gun.recoil=0;
+                p.setHealth(p.getMaxHealth());gun.ammo=gun.clipSize(abilities.itemSpirit);gun.reloadRemaining=0;gun.bloom=gun.recoil=0;
                 abilities.clearCooldowns();
             }
             case HazeProtocol.DEBUG_NO_COOLDOWNS -> {
@@ -284,7 +289,7 @@ public final class HazeActor {
         var layers=new ArrayList<SkinnedAsset.Layer>();layers.add(AnimationSource.aim(skeleton,"haze","idle",pitch,0));
         if(dagger)layers.add(AnimationSource.dagger(abilities.time-daggerStarted));
         var pose=skeleton.pose(clip,abilities.time,true,layers);
-        V3 pos=of(p.position()).add(SkinnedAsset.worldOffset(skeleton.attachment(pose,dagger?"palm_R":gun.shotCount%2==0?"muzzle_flash_l":"muzzle_flash_r"),input.yaw()));
+        V3 pos=of(p.position()).add(SkinnedAsset.worldOffset(skeleton.attachment(pose,dagger?"palm_R":gun.shotCount%2==0?"muzzle_flash_l":"muzzle_flash_r"),input.yaw()).mul(p.getScale()));
         JsonObject w=dagger?DATA.ability("ability_sleep_dagger").getAsJsonObject("m_mapWeaponInfos").getAsJsonObject("primary"):DATA.weapon();
         double speed=Retail.number(w.get("m_flBulletSpeed"))*Retail.SOURCE_UNIT*(dagger?1:1+items.stat("BonusBulletSpeedPercent")/100);
         V3 direction=aimAt(p,pitch).sub(pos).normalized();
@@ -363,23 +368,27 @@ public final class HazeActor {
             damage=itemEffects.onBullet(victim.getId(),damage,head,p.distanceTo(victim),victim.getHealth()/victim.getMaxHealth()*100,itemHost(p));
             float oldHp=victim.getHealth();hurt(p,victim,damage,false);
             double dealt=Math.max(0,oldHp-victim.getHealth());itemEffects.onWeaponDamage(victim.getId(),dealt,itemHost(p));
-            healItem(p,dealt*itemStat(p,"BulletLifestealPercent")/100);
+            healItem(p,dealt*itemStat(p,"BulletLifestealPercent")/100,false);
             if(stack.spiritProc()>0){int old=itemAbilityContext;itemAbilityContext=2;hurt(p,victim,stack.spiritProc(),true);itemAbilityContext=old;}
             if(abilities.time<abilities.buffUntil) p.heal((float)(damage*abilities.p(1,"BulletLifesteal")/100));
         }
     }
-    private void hurt(ServerPlayer p,LivingEntity e,double damage,boolean spirit) {
-        combat(e);
-        DamageSource source=new DamageSource(p.level().registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(spirit?SPIRIT:BULLET),p,p);
+    private void hurt(ServerPlayer p,LivingEntity e,double damage,boolean spirit){hurt(p,e,damage,spirit?ItemEffects.DamageKind.SPIRIT:ItemEffects.DamageKind.BULLET);}
+    private void hurt(ServerPlayer p,LivingEntity e,double damage,ItemEffects.DamageKind kind) {
+        boolean spirit=kind==ItemEffects.DamageKind.SPIRIT;
+        combat(e);damage*=1+items.stat("OutgoingDamagePenaltyPercent")/100;
+        DamageSource source=new DamageSource(p.level().registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(spirit?SPIRIT:kind==ItemEffects.DamageKind.MELEE?MELEE:BULLET),p,p);
         double multiplier=1;for(var d:itemDebuffs.getOrDefault(e.getId(),Map.of()).values())multiplier*=1-Math.min(.95,(spirit?d.item.property("MagicResistReduction")+d.item.property("TechArmorDamageReduction"):d.item.property("BulletArmorReduction")+d.item.property("BulletResistReduction"))/100);
         float hp=e.getHealth();e.invulnerableTime=0;e.hurtServer(p.level(),source,(float)(damage*multiplier));
         double dealt=Math.max(0,hp-e.getHealth());
-        if(spirit&&!itemDamage){itemEffects.onSpirit(e.getId(),dealt,itemHost(p));healItem(p,dealt*(itemStat(p,"AbilityLifestealPercentHero")+items.stat("AbilityLifestealPercentHeroPassive"))/100);}
+        if(spirit){if(!itemDamage)itemEffects.onSpirit(e.getId(),dealt,itemHost(p));healItem(p,dealt*(itemStat(p,"AbilityLifestealPercentHero")+items.stat("AbilityLifestealPercentHeroPassive"))/100,false);}else if(itemDamage&&kind==ItemEffects.DamageKind.BULLET)healItem(p,dealt*itemStat(p,"BulletLifestealPercent")/100,false);
         if(!e.isAlive()&&TargetRules.role(p,e).hero()){for(String id:items.owned){var i=ItemCatalog.ITEMS.get(id);if(itemDebuffs.getOrDefault(e.getId(),Map.of()).containsKey(id))healItem(p,i.property("HealOnKill"));if(i.property("MaxStacks")>0&&(id.equals("upgrade_glass_cannon")||id.equals("upgrade_trophy_collector")))itemEffects.stacks.merge(id,1,(a,b)->Math.min((int)i.property("MaxStacks"),a+b));}}
     }
     public double itemStat(ServerPlayer p,String key){return items.stat(key)+itemEffects.bonus(key,p.getHealth()/p.getMaxHealth()*100)+(key.equals("BonusHealth")?healthSteals.stream().mapToDouble(HealthSteal::amount).sum():0);}
-    private void healItem(ServerPlayer p,double n){if(n>0){float before=p.getHealth();p.heal((float)(n*(1+items.stat("HealAmpCastPercent")/100)));itemEffects.onHealed(Math.max(0,p.getHealth()-before));}}
+    private void healItem(ServerPlayer p,double n){healItem(p,n,true);}
+    private void healItem(ServerPlayer p,double n,boolean trigger){if(n>0){float before=p.getHealth();p.heal((float)(n*(1+items.stat("HealAmpCastPercent")/100)));if(trigger)itemEffects.onHealed(Math.max(0,p.getHealth()-before));}}
     private ItemEffects.Host itemHost(ServerPlayer p){return new ItemEffects.Host(){
+        public boolean grounded(){return p.onGround();}
         public boolean enemyHeroDamage(){return incomingEnemyHero;}
         public boolean inCombat(){return HazeActor.this.inCombat();}public boolean behind(int target){var e=p.level().getEntity(target);return e!=null&&e.getLookAngle().dot(p.position().subtract(e.position()).normalize())<0;}
         public int point(double range){int id=nextItemPoint--;itemZonePoints.put(id,p.level().clip(new ClipContext(p.getEyePosition(),p.getEyePosition().add(p.getLookAngle().scale(Math.max(range,30))),ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,p)).getLocation());return id;}
@@ -402,9 +411,11 @@ public final class HazeActor {
             final Vec3 origin=point;return p.level().getEntitiesOfClass(Mob.class,new AABB(point,point).inflate(Math.max(.1,range)),e->TargetRules.damageable(p,e)&&e.distanceToSqr(origin)<=range*range&&p.hasLineOfSight(e)&&(center!=-2||e.getBoundingBox().inflate(.7).clip(p.getEyePosition(),p.getEyePosition().add(p.getLookAngle().scale(range))).isPresent())).stream().sorted(Comparator.comparingDouble(e->e.distanceToSqr(origin))).map(Entity::getId).toList();
         }
         public double targetHealth(int id){return id==0?p.getMaxHealth():p.level().getEntity(id) instanceof LivingEntity e?e.getMaxHealth():0;}
-        public void damage(int id,double n){if(n<=0)return;if(p.level().getEntity(id) instanceof LivingEntity e&&TargetRules.damageable(p,e)){boolean old=itemDamage;itemDamage=true;try{hurt(p,e,n,true);}finally{itemDamage=old;}}}
+        public double meleeDamage(){return meleeDamageDealt;}
+        public void damage(int id,double n){damage(id,n,ItemEffects.DamageKind.SPIRIT);}
+        public void damage(int id,double n,ItemEffects.DamageKind kind){if(n<=0)return;if(p.level().getEntity(id) instanceof LivingEntity e&&TargetRules.damageable(p,e)){boolean old=itemDamage;itemDamage=true;try{hurt(p,e,n,kind);}finally{itemDamage=old;}}}
         public void debuff(int id,ItemCatalog.Item i,double d){if(d<=0||p.level().getEntity(id)==null||!TargetRules.damageable(p,p.level().getEntity(id)))return;var map=itemDebuffs.computeIfAbsent(id,k->new HashMap<>());var old=map.get(i.id());map.put(i.id(),new ItemDebuff(i,abilities.time+d,old==null?abilities.time:old.started));}
-        public void reload(double pct){gun.ammo=Math.min(gun.clipSize(0),gun.ammo+(int)Math.ceil(gun.clipSize(0)*pct/100));if(pct>0)gun.reloadRemaining=0;}
+        public void reload(double pct){gun.ammo=Math.min(gun.clipSize(abilities.itemSpirit),gun.ammo+(int)Math.ceil(gun.clipSize(abilities.itemSpirit)*pct/100));if(pct>0)gun.reloadRemaining=0;}
         public void refresh(boolean ultimate){if(ultimate)abilities.clearCooldowns();else for(int i=0;i<3;i++)abilities.readyAt[i]=abilities.time;}
         public void echo(int ability){abilities.refresh(ability);}
         public void replenishCharge(){abilities.refresh(1);}
@@ -418,6 +429,7 @@ public final class HazeActor {
         public void impulse(double n){}public void cleanse(){for(var effect:new ArrayList<>(p.getActiveEffects()))if(effect.getEffect().value().getCategory()==net.minecraft.world.effect.MobEffectCategory.HARMFUL)p.removeEffect(effect.getEffect());p.clearFire();}
     };}
     public boolean itemSilenced(int entity){for(var d:itemDebuffs.getOrDefault(entity,Map.of()).values())if(d.until>abilities.time&&Set.of("upgrade_targeted_silence","upgrade_proc_silence","upgrade_focus_lens","upgrade_glitch").contains(d.item.id()))return true;return false;}
+    public double allyItemDamageMultiplier(LivingEntity target,DamageSource source){int entity=target.getId();double factor=1;var player=target.level().getServer().getPlayerList().getPlayer(owner);if(player!=null&&TargetRules.role(player,target)==UnitRole.ALLY_HERO&&items.owned.contains("upgrade_dps_aura")&&source.is(net.minecraft.tags.DamageTypeTags.IS_PROJECTILE)){var item=ItemCatalog.ITEMS.get("upgrade_dps_aura");if(player.distanceTo(target)<=item.property("Radius"))factor*=1-item.property("BulletResist")/100;}for(var buff:alliedItemBuffs.getOrDefault(entity,Map.of()).values())if(buff.until>abilities.time){boolean bullet=source.is(net.minecraft.tags.DamageTypeTags.IS_PROJECTILE)||source.is(BULLET);if(buff.item.id().equals("upgrade_discord")&&!bullet)factor*=1-buff.item.property("TechResist")/100;}return factor;}
     public double outgoingItemMultiplier(int entity,boolean spell){double result=1;for(var d:itemDebuffs.getOrDefault(entity,Map.of()).values())if(d.until>abilities.time){String id=d.item.id();if(Set.of("upgrade_target_stun","upgrade_glitch","upgrade_crushing_fists").contains(id))return 0;if(spell&&itemSilenced(entity))return 0;if(!spell&&Set.of("upgrade_greater_withering_whip","upgrade_phantom_strike").contains(id))return 0;result*=1+d.item.property("OutgoingDamagePenaltyPercent")/100;}return Math.max(0,result);}
     public void captureItemDamage(int entity,double amount){var d=itemDebuffs.getOrDefault(entity,Map.of()).get("upgrade_focus_lens");if(d!=null&&d.until>abilities.time)focusedDamage.merge(entity,amount,Double::sum);}
     public double healMultiplier(int entity){double result=1;for(var d:itemDebuffs.getOrDefault(entity,Map.of()).values())if(d.until>abilities.time)result=Math.min(result,1+d.item.property("HealAmpReceivePenaltyPercent")/100);return Math.max(0,result);}
@@ -428,7 +440,7 @@ public final class HazeActor {
         if(p.getActiveEffects().stream().anyMatch(e->e.getEffect().equals(net.minecraft.world.effect.MobEffects.LEVITATION)||e.getEffect().equals(net.minecraft.world.effect.MobEffects.SLOWNESS)&&e.getAmplifier()>=9))itemEffects.onControl(itemHost(p));
         incomingEnemyHero=source.getEntity()!=null&&TargetRules.role(p,source.getEntity())==UnitRole.ENEMY_HERO;
         double n=itemEffects.incoming(amount*(1-Math.clamp(resist,-1,.95)),bullet,spirit,itemHost(p));
-        if(itemEffects.buff("upgrade_return_fire")&&source.getEntity() instanceof LivingEntity e&&e!=p&&!itemDamage){var i=ItemCatalog.ITEMS.get("upgrade_return_fire");itemHost(p).damage(e.getId(),amount*i.property(bullet?"BulletDamageReflectedPct":"SpiritDamageReflectedPct")/100);}
+        if((bullet||spirit)&&itemEffects.buff("upgrade_return_fire")&&source.getEntity() instanceof LivingEntity e&&e!=p&&!itemDamage){var i=ItemCatalog.ITEMS.get("upgrade_return_fire");V3 start=of(p.getEyePosition()),direction=of(e.getBoundingBox().getCenter()).sub(start).normalized();long id=nextProjectile++;projectiles.add(new Projectile(start,direction.mul(gun.f("m_flBulletSpeed")*Retail.SOURCE_UNIT),start,gun.f("m_flBulletLifetime"),false,amount*i.property(bullet?"BulletDamageReflectedPct":"SpiritDamageReflectedPct")/100,id));traces.add(new Trace(id,abilities.time,start,start,false));}
         return (float)n;
     }
     private void tickItemDebuffs(ServerPlayer p){
@@ -491,7 +503,9 @@ public final class HazeActor {
             V3 offset=of(e.position()).add(new V3(0,e.getBbHeight()*.5,0)).sub(of(p.position()).add(new V3(0,p.getBbHeight()*.5,0)));
             V3 targetDirection=melee.type==MeleeController.Type.HEAVY_AIR?offset.normalized():offset.flat().normalized();
             if(p.distanceTo(e)<=range && look.dot(targetDirection)>=cos && p.hasLineOfSight(e)) {
-                hurt(p,e,(DATA.stat(heavy?"EHeavyMeleeDamage":"ELightMeleeDamage")+progression.bonus("MODIFIER_VALUE_BASE_MELEE_DAMAGE_FROM_LEVEL"))*(1+itemStat(p,"BonusMeleeDamagePercent")/100),false);
+                float hpBefore=e.getHealth();
+                hurt(p,e,(DATA.stat(heavy?"EHeavyMeleeDamage":"ELightMeleeDamage")+progression.bonus("MODIFIER_VALUE_BASE_MELEE_DAMAGE_FROM_LEVEL"))*(1+itemStat(p,"BonusMeleeDamagePercent")/100),ItemEffects.DamageKind.MELEE);
+                meleeDamageDealt=Math.max(0,hpBefore-e.getHealth());
                 itemEffects.onMelee(e.getId(),heavy,itemHost(p));
                 hit=true;
                 if(heavy&&melee.knockUp()>0)e.setDeltaMovement(e.getDeltaMovement().add(0,melee.knockUp()*.05,0));
@@ -540,20 +554,22 @@ public final class HazeActor {
     public JsonObject characterStats(ServerPlayer p){
         JsonObject stats=new JsonObject();stats.addProperty("Уровень",progression.level);stats.addProperty("Здоровье",p.getHealth());stats.addProperty("Максимум здоровья",p.getMaxHealth());
         stats.addProperty("Щит",itemEffects.barrier);stats.addProperty("Урон пули",(gun.f("m_flBulletDamage")+gun.itemBaseDamage)*(1+gun.itemWeaponPercent/100));
-        stats.addProperty("Выстрелов в секунду",(1+itemStat(p,"BonusFireRate")/100)/gun.f("m_flCycleTime"));stats.addProperty("Патроны",gun.ammo);stats.addProperty("Размер магазина",gun.clipSize(0));
-        stats.addProperty("Перезарядка, с",gun.f("m_reloadDuration")/Math.max(.1,1+gun.itemReloadPercent/100));stats.addProperty("Сила духа",abilities.itemSpirit);
+        stats.addProperty("Выстрелов в секунду",(1+itemStat(p,"BonusFireRate")/100)/gun.f("m_flCycleTime"));stats.addProperty("Патроны",gun.ammo);stats.addProperty("Размер магазина",gun.clipSize(abilities.itemSpirit));
+        stats.addProperty("Перезарядка, с",gun.reloadDuration());stats.addProperty("Сила духа",abilities.itemSpirit);
         stats.addProperty("Скорость, м/с",DATA.stat("EMaxMoveSpeed")+itemStat(p,"BonusMoveSpeed"));stats.addProperty("Бонус спринта, м/с",DATA.stat("ESprintSpeed")+itemStat(p,"BonusSprintSpeed"));stats.addProperty("Стамина",DATA.stat("EStamina")+items.stat("Stamina"));
         stats.addProperty("Сопротивление пулям, %",100*items.reduction("BulletResist")+itemEffects.bonus("BulletResist",100*p.getHealth()/p.getMaxHealth()));stats.addProperty("Сопротивление духу, %",100*items.reduction("TechResist")+itemEffects.bonus("TechResist",100*p.getHealth()/p.getMaxHealth()));
         stats.addProperty("Сокращение КД, %",100*abilities.itemCooldownReduction);stats.addProperty("Длительность умений, %",abilities.itemDurationPercent);stats.addProperty("Радиус умений, %",abilities.itemRadiusPercent);
-        stats.addProperty("Вампиризм пуль, %",itemStat(p,"BulletLifestealPercent"));stats.addProperty("Вампиризм духа, %",itemStat(p,"AbilityLifestealPercentHero")+items.stat("AbilityLifestealPercentHeroPassive"));
+        stats.addProperty("Лёгкий удар",(DATA.stat("ELightMeleeDamage")+progression.bonus("MODIFIER_VALUE_BASE_MELEE_DAMAGE_FROM_LEVEL"))*(1+itemStat(p,"BonusMeleeDamagePercent")/100));stats.addProperty("Тяжёлый удар",(DATA.stat("EHeavyMeleeDamage")+progression.bonus("MODIFIER_VALUE_BASE_MELEE_DAMAGE_FROM_LEVEL"))*(1+itemStat(p,"BonusMeleeDamagePercent")/100));
+        stats.addProperty("Вампиризм пуль, %",itemStat(p,"BulletLifestealPercent"));stats.addProperty("Регенерация HP/с",DATA.stat("EBaseHealthRegen")+items.stat("BonusHealthRegen")+(!inCombat()?items.stat("OutOfCombatHealthRegen"):0)+itemEffects.regeneration(p.getMaxHealth()));
+        stats.addProperty("Вампиризм духа, %",itemStat(p,"AbilityLifestealPercentHero")+items.stat("AbilityLifestealPercentHeroPassive"));
         return stats;
     }
     public String snapshot(ServerPlayer p) {
         JsonObject j=new JsonObject();j.addProperty("uuid",owner.toString());j.addProperty("id",p.getId());j.addProperty("active",active);
         j.addProperty("level",progression.level);j.add("characterStats",characterStats(p));
         j.addProperty("health",p.getHealth());j.addProperty("maxHealth",p.getMaxHealth());j.addProperty("ammo",gun.ammo);
-        j.addProperty("reload",gun.reloadRemaining);j.addProperty("time",abilities.time);j.addProperty("recoil",gun.recoil);j.addProperty("bloom",gun.bloom);
-        JsonArray inventory=new JsonArray();items.owned.forEach(inventory::add);j.add("items",inventory);JsonObject bindings=new JsonObject();items.imbued.forEach(bindings::addProperty);j.add("imbued",bindings);j.addProperty("itemSlots",items.capacity);j.addProperty("shopMessage",items.message);j.addProperty("clipSize",gun.clipSize(0));
+        j.addProperty("reload",gun.reloadRemaining);j.addProperty("reloadDuration",gun.reloadDuration());j.addProperty("time",abilities.time);j.addProperty("recoil",gun.recoil);j.addProperty("bloom",gun.bloom);
+        JsonArray inventory=new JsonArray();items.owned.forEach(inventory::add);j.add("items",inventory);JsonObject bindings=new JsonObject();items.imbued.forEach(bindings::addProperty);j.add("imbued",bindings);j.addProperty("itemSlots",items.capacity);j.addProperty("shopMessage",items.message);j.addProperty("clipSize",gun.clipSize(abilities.itemSpirit));
         j.addProperty("debugNoCooldowns",debugNoCooldowns&&p.isCreative());
         j.addProperty("debugInfiniteAmmo",debugInfiniteAmmo&&p.isCreative());j.addProperty("debugLockHealth",debugLockHealth&&p.isCreative());
         if(p.isCreative()&&active){
@@ -565,9 +581,9 @@ public final class HazeActor {
                 j.add("debugTarget",info);
             }
         }
-        j.addProperty("itemMoveSpeed",itemStat(p,"BonusMoveSpeed"));j.addProperty("itemFlight",Math.max(0,itemEffects.flightUntil-itemEffects.time));j.addProperty("itemFlightSpeed",itemEffects.flightSpeed);j.addProperty("itemImpulse",itemEffects.moveImpulse);j.addProperty("itemMovementSerial",itemEffects.movementSerial);j.addProperty("itemStaminaSerial",itemEffects.staminaSerial);j.addProperty("itemStaminaRestore",itemEffects.staminaRestore);j.addProperty("itemBarrier",itemEffects.barrier);
+        j.addProperty("itemModelScale",p.getScale());j.addProperty("itemMoveSpeed",itemStat(p,"BonusMoveSpeed"));j.addProperty("itemShootPenaltyReduction",itemStat(p,"MoveWhileShootingSpeedPenaltyReductionPercent"));j.addProperty("itemZoomPenaltyReduction",itemStat(p,"MoveWhileZoomedSpeedPenaltyReductionPercent"));j.addProperty("itemFlight",itemEffects.time>=itemEffects.flightFrom?Math.max(0,itemEffects.flightUntil-itemEffects.time):0);j.addProperty("itemFlightSpeed",itemEffects.flightSpeed);j.addProperty("itemImpulse",itemEffects.moveImpulse);j.addProperty("itemMovementSerial",itemEffects.movementSerial);j.addProperty("itemStaminaSerial",itemEffects.staminaSerial);j.addProperty("itemStaminaRestore",itemEffects.staminaRestore);j.addProperty("itemBarrier",itemEffects.barrier);
         JsonArray itemCD=new JsonArray();for(String id:items.active())itemCD.add(itemEffects.cooldown(id));j.add("itemCooldowns",itemCD);
-        j.addProperty("smoke",abilities.smokeActive());j.addProperty("invisible",abilities.invisible());j.addProperty("flurry",abilities.flurry());
+        j.addProperty("smoke",abilities.smokeActive());j.addProperty("invisible",p.isInvisible());j.addProperty("flurry",abilities.flurry());
         j.addProperty("action",action);j.addProperty("actionTime",actionTime);j.addProperty("shots",gun.shotCount);
         j.addProperty("meleePhase",melee.phase.name());j.addProperty("meleeType",melee.type.name());j.addProperty("meleeAge",melee.age());
         j.addProperty("meleeChargeAge",melee.chargeAge());j.addProperty("meleeCooldown",melee.cooldown());

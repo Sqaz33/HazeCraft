@@ -10,6 +10,7 @@ public final class MeleeController {
     private final JsonObject definition,attacks,turnCurve;
     public Phase phase=Phase.NONE;
     public Type type=Type.NONE;
+    public double itemDistanceScale;
     public double time,phaseStart=-100,chargeStart=-100,strikeTime=-100,readyAt;
     public long serial,strikeSerial;
     public float yaw,pitch;
@@ -65,7 +66,7 @@ public final class MeleeController {
     public void cancel(){phase=Phase.NONE;phaseStart=time;}
     public V3 movement(V3 previous,double dt){
         if(!dashing())return phase==Phase.ATTACKING&&heavy()?V3.ZERO:previous;
-        double speed=Curve.sample(attack().getAsJsonObject("m_MovementSpeedCurve"),age())*Retail.SOURCE_UNIT;
+        double speed=Curve.sample(attack().getAsJsonObject("m_MovementSpeedCurve"),age())*Retail.SOURCE_UNIT*(1+itemDistanceScale/100);
         V3 target=direction.mul(speed);
         if(phase==Phase.AIR_DASH){
             var scale=definition.getAsJsonArray("m_AirMeleeUpScale");

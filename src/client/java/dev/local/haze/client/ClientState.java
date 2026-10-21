@@ -20,7 +20,7 @@ public final class ClientState {
     public final List<String> items;
     public final int itemSlots,clipSize;
     public final String shopMessage;
-    public final double itemMoveSpeed,itemFlight,itemFlightSpeed,itemImpulse,itemBarrier,itemStaminaRestore;public final long itemMovementSerial,itemStaminaSerial;public final double[] itemCooldowns=new double[4];
+    public final double itemMoveSpeed,itemFlight,itemFlightSpeed,itemImpulse,itemModelScale,reloadDuration,itemBarrier,itemStaminaRestore,itemShootPenaltyReduction,itemZoomPenaltyReduction;public final long itemMovementSerial,itemStaminaSerial;public final double[] itemCooldowns=new double[4];
     public final ItemInventory itemInventory;
     public final double health,maxHealth,reload,time,recoil,bloom,actionTime,daggerTime,leftShot,rightShot,smokeRemaining,danceRemaining;
     public final int ammo,smokeCharges;
@@ -43,7 +43,7 @@ public final class ClientState {
         debugTarget=j.has("debugTarget")?j.getAsJsonObject("debugTarget"):null;
         List<String> ownedItems=new ArrayList<>();if(j.has("items"))for(var id:j.getAsJsonArray("items"))ownedItems.add(id.getAsString());items=List.copyOf(ownedItems);
         itemSlots=j.has("itemSlots")?j.get("itemSlots").getAsInt():8;clipSize=j.has("clipSize")?j.get("clipSize").getAsInt():Retail.DATA.weapon().get("m_iClipSize").getAsInt();
-        itemStaminaRestore=j.has("itemStaminaRestore")?n(j,"itemStaminaRestore"):0;itemMoveSpeed=j.has("itemMoveSpeed")?n(j,"itemMoveSpeed"):0;itemFlight=j.has("itemFlight")?n(j,"itemFlight"):0;itemFlightSpeed=j.has("itemFlightSpeed")?n(j,"itemFlightSpeed"):0;itemImpulse=j.has("itemImpulse")?n(j,"itemImpulse"):0;itemBarrier=j.has("itemBarrier")?n(j,"itemBarrier"):0;itemMovementSerial=j.has("itemMovementSerial")?j.get("itemMovementSerial").getAsLong():0;itemStaminaSerial=j.has("itemStaminaSerial")?j.get("itemStaminaSerial").getAsLong():0;
+        itemModelScale=j.has("itemModelScale")?n(j,"itemModelScale"):1;reloadDuration=j.has("reloadDuration")?n(j,"reloadDuration"):Retail.number(Retail.DATA.weapon().get("m_reloadDuration"));itemShootPenaltyReduction=j.has("itemShootPenaltyReduction")?n(j,"itemShootPenaltyReduction"):0;itemZoomPenaltyReduction=j.has("itemZoomPenaltyReduction")?n(j,"itemZoomPenaltyReduction"):0;itemStaminaRestore=j.has("itemStaminaRestore")?n(j,"itemStaminaRestore"):0;itemMoveSpeed=j.has("itemMoveSpeed")?n(j,"itemMoveSpeed"):0;itemFlight=j.has("itemFlight")?n(j,"itemFlight"):0;itemFlightSpeed=j.has("itemFlightSpeed")?n(j,"itemFlightSpeed"):0;itemImpulse=j.has("itemImpulse")?n(j,"itemImpulse"):0;itemBarrier=j.has("itemBarrier")?n(j,"itemBarrier"):0;itemMovementSerial=j.has("itemMovementSerial")?j.get("itemMovementSerial").getAsLong():0;itemStaminaSerial=j.has("itemStaminaSerial")?j.get("itemStaminaSerial").getAsLong():0;
         if(j.has("itemCooldowns"))for(int i=0;i<Math.min(4,j.getAsJsonArray("itemCooldowns").size());i++)itemCooldowns[i]=j.getAsJsonArray("itemCooldowns").get(i).getAsDouble();
         shopMessage=j.has("shopMessage")?j.get("shopMessage").getAsString():"";
         itemInventory=new ItemInventory();itemInventory.capacity=itemSlots;for(String id:items)itemInventory.buy(id);if(j.has("imbued"))for(var entry:j.getAsJsonObject("imbued").entrySet())itemInventory.bind(entry.getKey(),entry.getValue().getAsInt());

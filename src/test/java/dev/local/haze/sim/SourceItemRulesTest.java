@@ -22,6 +22,7 @@ class SourceItemRulesTest {
         public void echo(int ability){echo=ability;}public void replenishCharge(){charges++;}
         public void reduceCooldown(double seconds,double percent){reducedSeconds+=seconds;reducedPercent+=percent;}
         public void teleport(double range,int target){}public void impulse(double speed){}public void cleanse(){}
+        public double meleeDamage(){return 100;}
         public double spirit(){return spirit;}public int ability(){return ability;}
     }
     static ItemEffects effect(String id){var inv=new ItemInventory();assertTrue(inv.buy(id));return new ItemEffects(inv);}
@@ -38,4 +39,10 @@ class SourceItemRulesTest {
     @Test void itemScalesUseOriginalScaleFunctionRatherThanFlatDamage(){var i=ItemCatalog.ITEMS.get("upgrade_tech_damage_pulse");assertEquals(25,i.scaled("DamagePulseAmount",0,0));assertEquals(48,i.scaled("DamagePulseAmount",100,0));}
     @Test void boundQuicksilverIgnoresOtherAbilityCasts(){var e=effect("upgrade_quick_silver");var h=new Host();e.inventory.bind("upgrade_quick_silver",1);e.onCast(0,h);assertFalse(e.buff("upgrade_quick_silver"));e.onCast(1,h);assertTrue(e.buff("upgrade_quick_silver"));}
     @Test void friendlyTargetsCannotReceiveOffensiveItemCasts(){var e=effect("upgrade_phantom_strike");var h=new Host();h.role=UnitRole.ALLY_HERO;assertFalse(e.use(0,h));assertEquals(0,h.damage);}
+    @Test void lifestrikeHealsFromActualMeleeDamageRatherThanMaximumHealth(){var e=effect("upgrade_boxing_glove");var h=new Host();h.role=UnitRole.CREEP;e.onMelee(1,true,h);assertEquals((120+100*.35)*.4,h.healed,1e-8);}
+    @Test void enchantedHolstersNegativeReloadModifierShortensReload(){var gun=new Gun(Retail.DATA);double initial=gun.reloadDuration();gun.itemReloadPercent=-30;assertEquals(initial*.7,gun.reloadDuration(),1e-8);}
+    @Test void extraChargeAllowsCastingSecondSmokeBeforeFullCooldown(){var a=new Abilities(Retail.DATA);a.itemCharges=1;a.smokeCharges=2;assertTrue(a.cast(1));a.advance(Math.max(0,a.p(1,"AbilityCooldownBetweenCharge"))+.01);assertTrue(a.cast(1));assertEquals(0,a.smokeCharges);}
+    @Test void shadowWeaveUsesOriginalFadeAndAmbushDurationAfterBreaking(){var e=effect("upgrade_cloaking_device_active");var h=new Host();e.use(0,h);assertFalse(e.invisible());advance(e,h,.7);assertTrue(e.invisible());e.breakInvisibility();assertFalse(e.invisible());assertEquals(25,e.bonus("BonusFireRate",100));advance(e,h,5.1);assertEquals(0,e.bonus("BonusFireRate",100));}
+    @Test void veilWalkerRespondsToOriginalWorldEventAndRetainsMovementAfterStealthBreak(){var e=effect("upgrade_veil_walker");var h=new Host();e.onVeilCrossed(h);assertEquals(85,h.healed);advance(e,h,.3);assertTrue(e.invisible());e.breakInvisibility();assertEquals(3.5,e.bonus("BonusMoveSpeed",100));}
+    @Test void platedArmorDeflectsWholeHitsRatherThanAlwaysReducingDamage(){var e=effect("upgrade_deflecting_armor");var h=new Host();int deflected=0;for(int n=0;n<2000;n++){double damage=e.incoming(10,true,false,h);assertTrue(damage==0||damage==10);if(damage==0)deflected++;}assertTrue(deflected>400&&deflected<800);}
 }

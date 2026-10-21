@@ -11,7 +11,7 @@ final class NativeSupportParityTest {
     private static JsonObject oracle() throws Exception {
         Path path=Path.of(System.getProperty("haze.native.support.oracle",
             "D:/DeadlockHazeLab/research/25939744/movement/native-support-cases.json"));
-        JsonObject result=JsonParser.parseString(Files.readString(path)).getAsJsonObject();
+        JsonObject result=JsonParser.parseString(RetailTestFixtures.read(path)).getAsJsonObject();
         assertEquals("25939744",result.getAsJsonObject("source").get("build").getAsString());
         assertEquals("b7deb2d934614b2b9a4e3edf6cf7bfb954b9f1436aadb0bf07b24f07bb7d5515",
             result.getAsJsonObject("source").get("clientSha256").getAsString());

@@ -132,7 +132,7 @@ public final class HazeHud {
             arc(g,cx,cy,59.5F,4,start,end,1,0x66000000);
             arc(g,cx,cy,58.5F,8,start,end,charge.fill(),charge.fill()<1?0x66ffee00:0x66ffffff);
         }
-        if(s.reload>0){arc(g,cx,cy,50,4,0,360,1,0x59242424);arc(g,cx,cy,50,4,45,135,1-s.reload/Retail.DATA.weapon().get("m_reloadDuration").getAsDouble(),color("colorEnemy"));}
+        if(s.reload>0){arc(g,cx,cy,50,4,0,360,1,0x59242424);arc(g,cx,cy,50,4,45,135,1-s.reload/s.reloadDuration,color("colorEnemy"));}
     }
     private static double setting(String name){var local=Retail.DATA.root.getAsJsonObject("localInputSettings");return local.has(name)?Retail.number(local.get(name)):Retail.DATA.nativeFloat(name);}
     private static int opacity(int rgb,double alpha){return(rgb&0xffffff)|((int)Math.round(alpha*255)<<24);}

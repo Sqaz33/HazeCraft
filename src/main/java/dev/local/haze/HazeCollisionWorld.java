@@ -18,8 +18,9 @@ public final class HazeCollisionWorld implements CapsuleMover.World {
         return boxes;
     }
     private static void add(List<CapsuleMover.Box> out,AABB b){out.add(new CapsuleMover.Box(b.minX,b.minY,b.minZ,b.maxX,b.maxY,b.maxZ));}
-    public static CapsuleMover create(){
-        Retail d=Retail.DATA;double unit=Retail.SOURCE_UNIT;
+    public static CapsuleMover create(){return create(1);}
+    public static CapsuleMover create(double scale){
+        Retail d=Retail.DATA;double unit=Retail.SOURCE_UNIT*scale;
         return new CapsuleMover(d.model.get("m_flStepHeight").getAsDouble()*unit,d.model.get("m_flCollisionRadius").getAsDouble()*unit,
             d.model.get("m_flCollisionHeight").getAsDouble()*unit,d.field("citadel_ability_jump","m_flCollidedWallMaxDist")*unit,
             d.nativeFloat("citadel_capsule_movement_ground_box_percentage"),d.nativeFloat("sv_mover_pogofrequency"),d.nativeFloat("sv_mover_pogodampingratio"),16);

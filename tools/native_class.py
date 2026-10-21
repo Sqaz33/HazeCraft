@@ -1,5 +1,5 @@
 """Read MSVC RTTI and disassemble a class's virtual methods, offline only."""
-import argparse,struct,json,re,math
+import argparse,struct,json,re,math,bisect
 from pathlib import Path
 import pefile,capstone
 p=argparse.ArgumentParser();p.add_argument('name');p.add_argument('out');p.add_argument('--table-only',action='store_true');p.add_argument('--dll',default='D:/SteamLibrary/steamapps/common/Deadlock/game/citadel/bin/win64/client.dll');a=p.parse_args()
@@ -19,6 +19,13 @@ for s in pe.sections:
   if pos<0:continue
   sig,off,ctor,typ,hier,selfrva=struct.unpack_from('<6I',raw,pos)
   if sig==1 and selfrva==s.VirtualAddress+pos:cols.append(base+selfrva)
+pdata=next((s.get_data() for s in pe.sections if s.Name.rstrip(b'\0')==b'.pdata'),b'')
+ranges=sorted((start,end) for start,end,unwind in struct.iter_unpack('<III',pdata[:len(pdata)//12*12]) if start<end)
+starts=[start for start,end in ranges]
+def method_size(address):
+ rva=address-base;index=bisect.bisect_right(starts,rva)-1
+ return min(8192,ranges[index][1]-rva) if index>=0 and rva<ranges[index][1] else 128
+
 tables=[]
 textRanges=[(base+s.VirtualAddress,base+s.VirtualAddress+s.Misc_VirtualSize)for s in pe.sections if s.Characteristics&0x20000000]
 md=capstone.Cs(capstone.CS_ARCH_X86,capstone.CS_MODE_64);md.detail=True
@@ -32,7 +39,7 @@ for col in cols:
     addr=struct.unpack_from('<Q',raw,pos)[0]
     if not any(lo<=addr<hi for lo,hi in textRanges):break
     rows=[]
-    for ins in ([] if a.table_only else md.disasm(pe.get_data(addr-base,2048),addr)):
+    for ins in ([] if a.table_only else md.disasm(pe.get_data(addr-base,method_size(addr)),addr)):
      row={'address':hex(ins.address),'mnemonic':ins.mnemonic,'operands':ins.op_str}
      for op in ins.operands:
       if op.type==capstone.x86.X86_OP_MEM and op.mem.base==capstone.x86.X86_REG_RIP:
@@ -45,7 +52,7 @@ for col in cols:
         st=blob.split(b'\0')[0]
         if len(st)>=4 and all(32<=x<127 for x in st):row['string']=st.decode()
      rows.append(row)
-     if ins.mnemonic=='ret':break
+     if method_size(addr)==128 and ins.mnemonic in ('ret','int3'):break
     methods.append({'index':len(methods),'va':hex(addr),'instructions':rows});pos+=8
    if methods:tables.append({'vtable':hex(base+s.VirtualAddress+match.start()+8),'methods':methods})
 Path(a.out).write_text(json.dumps({'class':a.name,'tables':tables},indent=2,allow_nan=False).replace('NaN','null'))

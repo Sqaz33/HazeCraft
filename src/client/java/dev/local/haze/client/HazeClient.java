@@ -170,11 +170,12 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         motion.itemMoveSpeed=0;motion.itemSprintSpeed=0;motion.itemStamina=0;motion.itemStaminaRegenReduction=0;
         if(state!=null){
             var inventory=state.itemInventory;
+            motion.itemShootPenaltyReduction=state.itemShootPenaltyReduction;motion.itemZoomPenaltyReduction=state.itemZoomPenaltyReduction;motion.itemAirControl=inventory.stat("AirControlPercent");motion.itemAirAcceleration=inventory.stat("AirControlAccelPercent");motion.melee.itemDistanceScale=inventory.stat("MeleeDistanceScale");
             motion.itemMoveSpeed=state.itemMoveSpeed;motion.itemSprintSpeed=inventory.stat("BonusSprintSpeed");motion.itemStamina=inventory.stat("Stamina");motion.itemStaminaRegenReduction=inventory.reduction("StaminaCooldownReduction");
         }
         double bonus=state!=null&&state.smoke?Retail.DATA.prop("ability_smoke_bomb","InvisMoveSpeedMod",state.ranks[1]):0;
         double cap=state!=null&&state.flurry?Retail.DATA.prop("ability_bullet_flurry","ChannelMoveSpeed",state.ranks[3]):-1;
-        if(playerCollision==null||playerCollision.p!=p||playerCollision.owner!=motion)playerCollision=new PlayerCollision(p,motion);
+        if(playerCollision==null||playerCollision.p!=p||playerCollision.owner!=motion||Math.abs(playerCollision.scale-p.getScale())>1e-6)playerCollision=new PlayerCollision(p,motion);
         Motion.Collision collision=playerCollision;
         Motion.Mode before=motion.mode;
         long jumpBefore=motion.jumpSerial;
@@ -193,9 +194,9 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
     private static final class PlayerCollision implements Motion.Collision {
         private final LocalPlayer p;
         private final Motion owner;
-        private final CapsuleMover mover=HazeCollisionWorld.create();
+        private final CapsuleMover mover;private final double scale;
         private final HazeCollisionWorld world;
-        PlayerCollision(LocalPlayer p,Motion owner){this.p=p;this.owner=owner;world=new HazeCollisionWorld(p);}
+        PlayerCollision(LocalPlayer p,Motion owner){this.p=p;this.owner=owner;scale=p.getScale();mover=HazeCollisionWorld.create(scale);world=new HazeCollisionWorld(p);}
         @Override public boolean canStand(){
             var shape=mover.shape(false);V3 origin=HazeActor.of(p.position());
             for(var box:world.boxes(shape.bounds(origin)))if(CapsuleMover.contact(shape,origin,box).separation()<-1e-6)return false;

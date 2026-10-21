@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class NativeWallJumpParityTest {
     private static V3 source(JsonArray a){return new V3(a.get(0).getAsFloat(),a.get(2).getAsFloat(),a.get(1).getAsFloat());}
     @Test void matches200NativeImpulsesAndLateralCurveArguments() throws Exception {
-        JsonObject data=JsonParser.parseString(Files.readString(Path.of("D:/DeadlockHazeLab/research/25950029/movement/native-wall-jump-cases.json"))).getAsJsonObject();
+        JsonObject data=JsonParser.parseString(RetailTestFixtures.read(Path.of("D:/DeadlockHazeLab/research/25950029/movement/native-wall-jump-cases.json"))).getAsJsonObject();
         assertEquals("fadaf78301af6d47d286de6199d1fd0aba7053f6ab597afa3de55369f72424c6",data.get("sourceSha256").getAsString());
         JsonArray cases=data.getAsJsonArray("cases");assertEquals(200,cases.size());
         for(JsonElement element:cases){

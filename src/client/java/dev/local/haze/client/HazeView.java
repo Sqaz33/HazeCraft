@@ -57,7 +57,7 @@ public final class HazeView {
                 fov=CameraSequence.evaluate(dash.getAsJsonArray("m_vecFOVOperations"),elapsed,fov,fov);
             }
         }
-        return new Parameters(back*Retail.SOURCE_UNIT,side*Retail.SOURCE_UNIT,height*Retail.SOURCE_UNIT,fov);
+        return new Parameters(back*Retail.SOURCE_UNIT,side*Retail.SOURCE_UNIT,height*Retail.SOURCE_UNIT*(s==null?1:s.itemModelScale),fov);
     }
     public static float verticalFov(float partial){return(float)Math.toDegrees(2*Math.atan(Math.tan(Math.toRadians(parameters(partial).fov)/2)/(4.0/3)));}
 }

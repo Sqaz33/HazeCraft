@@ -66,10 +66,11 @@ public final class DebugScreen extends Screen {
         }).bounds(left+10+labelWidth+fieldWidth,contentTop+row*rowHeight,panelWidth-24-labelWidth-fieldWidth,rowHeight-3).build());
         hazeButtons.add(apply);
         if(action==DebugAction.TARGET_STACKS)targetButtons.add(apply);
-        if(action==DebugAction.MAX_HEALTH)field.setTooltip(Tooltip.create(Component.literal("От 1 до 1024 HP — диапазон здоровья Minecraft.")));
+        if(action==DebugAction.MAX_HEALTH)field.setTooltip(Tooltip.create(Component.literal("От 1 до 1 000 000 HP. Исходный максимум учитывает уровень и предметы.")));
     }
     private void character(){
         number(0,"Уровень персонажа",state()==null?1:state().level,DebugAction.CHARACTER_LEVEL);
+        action(4,0,1,"Событие cosmic veil","Отладочная подача исходного события входа в cosmic veil для Veil Walker",DebugAction.VEIL_EVENT,0);
         int max=new CharacterProgression().maximum();int[] levels={1,10,20,max};
         for(int i=0;i<levels.length;i++)action(1,i,levels.length,"Уровень "+levels[i],"Рост характеристик из таблицы Haze",DebugAction.CHARACTER_LEVEL,levels[i]);
         button(3,0,1,()->"Все текущие характеристики","Характеристики с сервера с учётом предметов и усилений",()->Minecraft.getInstance().setScreen(new CharacterStatsScreen(this)),true);
@@ -81,7 +82,7 @@ public final class DebugScreen extends Screen {
         number(2,"Максимум HP",state()==null?730:(int)state().maxHealth,DebugAction.MAX_HEALTH);
         button(3,0,1,()->"Зафиксировать HP: "+flag(state()!=null&&state().debugLockHealth),"Удерживать заданное HP: реген и лечение не мешают проверять HUD.",()->HazeClient.debug(DebugAction.LOCK_HEALTH,0),true);
         button(4,0,3,()->"−100 HP","Уменьшить здоровье на 100, минимум 1 HP",()->{if(state()!=null)HazeClient.debug(DebugAction.HEALTH_VALUE,(int)Math.max(1,state().health-100));},true);
-        button(4,1,3,()->"Исходный максимум","Вернуть максимум здоровья Haze из файлов игры",()->HazeClient.debug(DebugAction.MAX_HEALTH,(int)Retail.DATA.stat("EMaxHealth")),true);
+        button(4,1,3,()->"Исходный максимум","Вернуть максимум здоровья Haze из файлов игры",()->HazeClient.debug(DebugAction.MAX_HEALTH,0),true);
         action(4,2,3,"Полное HP","Восстановить только здоровье",DebugAction.HEALTH_PERCENT,100);
     }
     private void movement(){

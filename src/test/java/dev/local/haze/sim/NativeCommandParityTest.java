@@ -12,7 +12,7 @@ final class NativeCommandParityTest {
     @Test void doublePressMatchesOriginalCommandWindowAndUnsignedWrap() throws Exception {
         Path path=Path.of(System.getProperty("haze.native.command.oracle",
             "D:/DeadlockHazeLab/research/25939744/movement/native-command-cases.json"));
-        JsonObject oracle=JsonParser.parseString(Files.readString(path)).getAsJsonObject();
+        JsonObject oracle=JsonParser.parseString(RetailTestFixtures.read(path)).getAsJsonObject();
         assertEquals("25939744",oracle.getAsJsonObject("source").get("build").getAsString());
         assertEquals("b7deb2d934614b2b9a4e3edf6cf7bfb954b9f1436aadb0bf07b24f07bb7d5515",
             oracle.getAsJsonObject("source").get("clientSha256").getAsString());

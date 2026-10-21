@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 final class NativeStateParityTest {
     private static JsonObject oracle() throws Exception {
-        JsonObject data=JsonParser.parseString(Files.readString(Path.of(System.getProperty("haze.native.state.oracle",
+        JsonObject data=JsonParser.parseString(RetailTestFixtures.read(Path.of(System.getProperty("haze.native.state.oracle",
             "D:/DeadlockHazeLab/research/25939744/movement/native-state-cases.json")))).getAsJsonObject();
         assertEquals("25939744",data.getAsJsonObject("source").get("build").getAsString());
         assertEquals("b7deb2d934614b2b9a4e3edf6cf7bfb954b9f1436aadb0bf07b24f07bb7d5515",

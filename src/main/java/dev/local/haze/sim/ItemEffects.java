@@ -4,6 +4,7 @@ import java.util.*;
 
 /** Stateful item rules; all magnitudes come from the pinned owned-game catalogue. */
 public final class ItemEffects {
+    public enum DamageKind { BULLET, SPIRIT, MELEE }
     public interface Host {
         double health(); double maxHealth(); void heal(double n); void drain(double n);
         int target(double range); List<Integer> nearby(double range,int center);
@@ -12,9 +13,11 @@ public final class ItemEffects {
         default void stealHealth(int target,double amount,double duration){}
         default void healTarget(int target,double n){if(target==0)heal(n);}default void shieldTarget(int target,double n,double duration){}
         default void buffTarget(int target,ItemCatalog.Item item,double duration){}default void pull(int target){}
+        default boolean grounded(){return true;}
         default boolean enemyHeroDamage(){return true;}default void replenishCharge(){}
         default int ability(){return -1;}default void echo(int ability){refresh(false);}default void reduceCooldown(double seconds,double percent){}
         default double spirit(){return 0;}default double weapon(){return 0;}
+        default double meleeDamage(){return 0;}default void damage(int target,double amount,DamageKind kind){damage(target,amount);}
         double targetHealth(int target); void damage(int target,double amount); void debuff(int target,ItemCatalog.Item item,double duration);
         default boolean inCombat(){return true;}default boolean behind(int target){return false;}default int point(double range){return -1;}
         void reload(double percent); void refresh(boolean ultimate); void teleport(double range,int target); void impulse(double speed); void cleanse();
@@ -23,11 +26,15 @@ public final class ItemEffects {
     private void context(Host h){spirit=h.spirit();weapon=h.weapon();}
     private double value(ItemCatalog.Item i,String key){return i.scaled(key,spirit,weapon);}
     public double staminaRestore;
+    private String invisibilityItem="";private double invisibleFrom,revealUntil;
+    public double flightFrom;private boolean leapAirborne;
     public double time,barrier,barrierUntil,invisibleUntil,flightUntil,flightSpeed,moveImpulse;
     public long movementSerial,staminaSerial;
     public final Map<String,Double> buffs=new HashMap<>();
     public final Map<String,Integer> stacks=new HashMap<>();
-    private final Map<String,DamageWindow> damageWindows=new HashMap<>();private double lastDamage=-100,spellParryUntil;
+    private final Set<String> channelPulls=new HashSet<>();
+    private final Set<Integer> ultimateHits=new HashSet<>();
+    private final Map<String,DamageWindow> damageWindows=new HashMap<>();private double lastDamage=-100,spellParryUntil;private boolean spellParryHealed;
     private final Map<String,Double> procs=new HashMap<>(), accum=new HashMap<>();
     private final List<RunnableAt> delayed=new ArrayList<>();
     private final List<Zone> zones=new ArrayList<>();
@@ -54,8 +61,9 @@ public final class ItemEffects {
         context(h);var active=inventory.active();if(slot<0||slot>=active.size())return false;
         var i=ItemCatalog.ITEMS.get(active.get(slot));String id=i.id();
         if(id.equals("upgrade_blood_tribute")&&buff(id)){buffs.remove(id);return true;}
-        if(id.equals("upgrade_rocket_booster")&&leapUntil>time){moveImpulse=-value(i,"DropDownSpeed");movementSerial++;leapUntil=0;return true;}
+        if(id.equals("upgrade_rocket_booster")&&leapUntil>time&&!h.grounded()){moveImpulse=-value(i,"DropDownSpeed");movementSerial++;leapUntil=0;return true;}
         if(id.equals("upgrade_rocket_booster")&&time-lastDamage<value(i,"InterruptCooldown"))return false;
+        if(id.equals("upgrade_rescue_beam")){var channel=zones.stream().filter(z->z.item.id().equals(id)&&z.until>time&&z.center>0).findFirst();if(channel.isPresent()&&channelPulls.add(id)){h.pull(channel.get().center);return true;}}
         if(cooldown(id)>0)return false;
         boolean enemy=Set.of("upgrade_non_player_bonus_sacrifice","upgrade_containment","upgrade_spirit_sap","upgrade_focus_lens","upgrade_withering_whip","upgrade_greater_withering_whip","upgrade_rupture","upgrade_target_stun","upgrade_phantom_strike","upgrade_glitch").contains(id);
         boolean friendly=i.targeting().contains("HERO_FRIENDLY")&&i.data().get("m_eAbilityTargetingLocation").getAsString().contains("UNIT");
@@ -72,6 +80,7 @@ public final class ItemEffects {
         String id=i.id();double d=duration(i);activateBuff(i,d);
         switch(id){
             case "upgrade_non_player_bonus_sacrifice" -> {h.damage(target,h.targetHealth(target)*10);activateBuff(i,d);}
+            case "upgrade_dps_aura" -> {for(int ally:h.allies(value(i,"ActiveRadius"),0))if(ally!=0)h.buffTarget(ally,i,d);}
             case "upgrade_capacitor" -> {for(int t:h.nearby(value(i,"ChainRadius"),0)){h.damage(t,value(i,"Damage"));h.debuff(t,i,value(i,"SlowDuration"));}}
             case "upgrade_targeted_silence" -> {for(int t:h.nearby(value(i,"AbilityCastRange"),-2)){h.damage(t,value(i,"Damage"));h.debuff(t,i,d);}}
             case "upgrade_reduce_debuff_duration" -> {h.cleanse();h.heal(value(i,"HealOnActivate"));}
@@ -85,24 +94,26 @@ public final class ItemEffects {
             case "upgrade_aoe_root" -> {for(int t:h.nearby(value(i,"CaptureRadius"),h.point(value(i,"AbilityCastRange"))))h.debuff(t,i,d);}
             case "upgrade_ability_refresher" -> h.refresh(true);
             case "upgrade_ability_power_shard" -> h.echo(inventory.bound(i.id()));
-            case "upgrade_cloaking_device_active" -> invisibleUntil=time+d;
-            case "upgrade_rocket_booster" -> {leapUntil=time+value(i,"JumpVelocityHidden");moveImpulse=value(i,"JumpVelocityHidden");movementSerial++;h.impulse(moveImpulse);shield(i.id(),value(i,"CombatBarrier"),value(i,"BarrierDuration"));}
-            case "upgrade_health_nova","upgrade_health_stimpak" -> zones.add(new Zone(i,target,time+value(i,"RegenDuration"),time));
+            case "upgrade_cloaking_device_active" -> {buffs.remove(id);invisibilityItem=id;invisibleFrom=time+value(i,"InvisFadeToDuration");invisibleUntil=time+d;}
+            case "upgrade_rocket_booster" -> {leapUntil=Double.POSITIVE_INFINITY;leapAirborne=false;moveImpulse=value(i,"JumpVelocityHidden");movementSerial++;h.impulse(moveImpulse);shield(i.id(),value(i,"CombatBarrier"),value(i,"BarrierDuration"));}
+            case "upgrade_health_nova","upgrade_health_stimpak" -> {zones.add(new Zone(i,target,time+value(i,"RegenDuration"),time));h.buffTarget(target,i,value(i,"RegenDuration"));}
             case "upgrade_restorative_locket" -> {int count=stacks.getOrDefault(id,0);h.healTarget(target,value(i,"HealPerStack")*count);staminaRestore=Math.max(value(i,"MinStaminaRestore"),value(i,"MaxStaminaRestore")*count/Math.max(1,value(i,"MaxStacks")));stacks.put(id,0);staminaSerial++;}
-            case "upgrade_rescue_beam" -> zones.add(new Zone(i,target,time+value(i,"AbilityChannelTime"),time));
+            case "upgrade_rescue_beam" -> {channelPulls.remove(id);zones.add(new Zone(i,target,time+value(i,"AbilityChannelTime"),time));}
             case "upgrade_thermal_detonator" -> zones.add(new Zone(i,h.point(value(i,"Radius")),time+d,time));
             case "upgrade_blood_tribute" -> activateBuff(i,Double.MAX_VALUE);
             case "upgrade_unstoppable" -> h.cleanse();
             case "upgrade_cold_front","upgrade_arctic_blast" -> {for(int t:h.nearby(value(i,"EndRadius"),0)){h.damage(t,value(i,"Damage"));h.debuff(t,i,Math.max(d,value(i,"SlowDuration")));}}
             case "upgrade_self_bubble" -> {etherealUntil=time+d;h.cleanse();delayed.add(new RunnableAt(time+d,()->{activateBuff(i,value(i,"BuffDuration"));h.reload(100);}));}
             case "upgrade_surging_power" -> h.reload(value(i,"ActiveReloadPercent"));
-            case "upgrade_magic_carpet" -> {flightUntil=time+value(i,"SummonDuration")+d;flightSpeed=value(i,"FlyMoveSpeed");}
+            case "upgrade_magic_carpet" -> {flightFrom=time+value(i,"SummonDuration");flightUntil=flightFrom+d;flightSpeed=value(i,"FlyMoveSpeed");}
             case "upgrade_goose_egg" -> inventory.message="Души уже бесконечны";
             default -> { /* Self buffs are applied by bonus(), immunity(), and onBullet(). */ }
         }
     }
     public void tick(double dt,Host h){
-        context(h);double previous=time;time+=dt;updateShields();
+        context(h);double previous=time;time+=dt;updateShields();if(invisibleUntil>0&&invisibleUntil<=time)breakInvisibility();
+        if(leapUntil>time){if(!h.grounded())leapAirborne=true;else if(leapAirborne){var leap=ItemCatalog.ITEMS.get("upgrade_rocket_booster");for(int target:h.nearby(value(leap,"SlamDownRadius"),0))h.debuff(target,leap,value(leap,"SlowDuration"));leapUntil=0;}}
+
         var tasks=new ArrayList<>(delayed);delayed.clear();for(var task:tasks)if(task.at<=time)task.run.run();else delayed.add(task);
         buffs.keySet().removeIf(id->!inventory.owned.contains(id)||buffs.get(id)<=time);
         for(var z:new ArrayList<>(zones)){
@@ -124,6 +135,7 @@ public final class ItemEffects {
             if(buff(id)&&value(i,"Regeneration")>0)h.heal(value(i,"Regeneration")*dt);
             if(time-lastDamage>=value(i,"RestoreDelay")&&value(i,"HealLifePercentOutOfCombat")>0)h.heal(h.maxHealth()*value(i,"HealLifePercentOutOfCombat")/100*dt);
             if(expirations.getOrDefault(id,Double.MAX_VALUE)<=time){stacks.remove(id);accum.remove(id);expirations.remove(id);}
+            
             if(id.equals("upgrade_tech_damage_pulse")&&proc(i,value(i,"AbilityCooldown")*(1-inventory.reduction("ItemCooldownReduction")))){int count=0;for(int t:h.nearby(value(i,"DamagePulseRadius"),0))if(count++<i.field("m_iMaxTargets"))h.damage(t,value(i,"DamagePulseAmount"));}
             if(id.equals("upgrade_bullet_armor_reduction_aura")||id.equals("upgrade_juggernaut")||buff(id)&&id.equals("upgrade_colossus"))for(int t:h.nearby(value(i,"Radius")>0?value(i,"Radius"):8,0))h.debuff(t,i,.2);
         }
@@ -132,17 +144,22 @@ public final class ItemEffects {
         double value=0;
         for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);boolean active=buff(id);
             if(active&&!(id.equals("upgrade_self_bubble")&&busy())){value+=switch(key){
-                case "BonusMoveSpeed" -> (id.equals("upgrade_cloaking_device_active")&&invisibleUntil>time?value(i,"InvisMoveSpeedMod"):0)+(id.equals("upgrade_counterspell")||id.equals("upgrade_weapon_backstabber")||id.equals("upgrade_resonant_healing")||id.equals("upgrade_magic_storm")?value(i,"BonusMoveSpeed"):0)+value(i,"ActiveBonusMoveSpeed")+value(i,"ActiveMoveSpeedPenalty")+(id.equals("upgrade_blood_tribute")||id.equals("upgrade_guardian_ward")||id.equals("upgrade_divine_barrier")?value(i,"BonusMoveSpeed"):0);
+                case "MoveWhileShootingSpeedPenaltyReductionPercent","MoveWhileZoomedSpeedPenaltyReductionPercent","SlideScale" -> value(i,key);
+                case "BonusSprintSpeed" -> id.equals("upgrade_health_stimpak")?value(i,"BonusSprintSpeed"):0;
+                case "BonusMoveSpeed" -> (id.equals("upgrade_veil_walker")?value(i,"BonusMoveSpeed"):0)+(id.equals("upgrade_self_bubble")&&!busy()?value(i,"BonusMoveSpeed"):0)+(id.equals("upgrade_cloaking_device_active")&&invisibleUntil>time?value(i,"InvisMoveSpeedMod"):0)+(id.equals("upgrade_counterspell")||id.equals("upgrade_weapon_backstabber")||id.equals("upgrade_resonant_healing")||id.equals("upgrade_magic_storm")?value(i,"BonusMoveSpeed"):0)+value(i,"ActiveBonusMoveSpeed")+value(i,"ActiveMoveSpeedPenalty")+(id.equals("upgrade_blood_tribute")||id.equals("upgrade_guardian_ward")||id.equals("upgrade_divine_barrier")?value(i,"BonusMoveSpeed"):0);
                 case "BonusFireRate" -> (id.equals("upgrade_cloaking_device_active")&&invisibleUntil<=time?value(i,"AmbushBonusFireRate"):0)+value(i,"ActiveBonusFireRate")+(Set.of("upgrade_dps_aura","upgrade_blood_tribute","upgrade_active_reload","upgrade_kinetic_sash","upgrade_tech_overflow","upgrade_healbuff").contains(id)?value(i,"BonusFireRate"):0)+value(i,"ActivatedFireRate")+value(i,"FireRateBonus");
                 case "SpiritPower" -> (id.equals("upgrade_spirit_snatch")?value(i,"TechPowerGain"):0)+(id.equals("upgrade_cloaking_device_active")&&invisibleUntil<=time?value(i,"AmbushBonusTechPower"):0)+value(i,"BonusSpirit")+(id.equals("upgrade_arcane_surge")?value(i,"SpiritPower"):0);
                 case "BulletLifestealPercent" -> value(i,"ActiveBonusLifesteal")+(id.equals("upgrade_active_reload")?value(i,"BulletLifestealPercent"):0);
                 case "AbilityLifestealPercentHero" -> id.equals("upgrade_infuser")?value(i,key):value(i,"BonusSpiritLifesteal");
                 case "BulletResist" -> value(i,"BuffBulletResist")+(id.equals("upgrade_warp_stone")?value(i,"BulletResist"):0);
-                case "TechResist" -> value(i,"BuffTechResist")+(id.equals("upgrade_spirit_snatch")?value(i,"TechArmorGain"):0);
+                case "TechResist" -> ((id.equals("upgrade_fury_trance")||id.equals("upgrade_discord"))?value(i,"TechResist"):0)+value(i,"BuffTechResist")+(id.equals("upgrade_spirit_snatch")?value(i,"TechArmorGain"):0);
                 case "BonusMeleeDamagePercent" -> id.equals("upgrade_colossus")?value(i,key):id.equals("upgrade_cloaking_device_active")&&invisibleUntil<=time?value(i,"AmbushBonusMeleeDamage"):0;
                 case "BonusClipSize" -> id.equals("upgrade_kinetic_sash")?value(i,key):0;
                 default -> 0;};}
             if(value(i,"LifeThreshold")>0&&healthPercent>=value(i,"LifeThreshold")&&!i.stats().containsKey(key))value+=value(i,key);
+            if(id.equals(invisibilityItem)&&invisibleUntil>time&&key.equals("BonusMoveSpeed")&&id.equals("upgrade_cloaking_device_active"))value+=value(i,"InvisMoveSpeedMod");
+            if(id.equals("upgrade_dps_aura")&&key.equals("BulletResist"))value+=value(i,"BulletResist");
+            var shield=shields.get(id);if(shield!=null&&shield.amount>0&&shield.until>time&&(id.equals("upgrade_weapon_shielding")&&key.equals("BulletResist")||id.equals("upgrade_spirit_bubble")&&key.equals("TechResist")))value+=value(i,key);
             if(id.equals("upgrade_chonky")&&healthPercent>=value(i,"HealthThreshold")&&key.equals("BonusMoveSpeed"))value+=value(i,key);
             if((id.equals("upgrade_tech_purge")&&key.equals("TechResist")||id.equals("upgrade_improved_bullet_armor")&&key.equals("BulletResist"))&&!i.stats().containsKey(key))value+=value(i,key);
             if(id.equals("upgrade_intensifying_clip")&&key.equals("BaseAttackDamagePercent")&&time-lastShot<.3)value+=value(i,"BaseAttackDamagePercentAtMaxDuration")*Math.min(1,(time-shootStart)/value(i,"ShootDurationForMax"));
@@ -163,6 +180,7 @@ public final class ItemEffects {
     public void onShot(){if(time-lastShot>.3)shootStart=time;lastShot=time;}
     public double onBullet(int target,double damage,boolean head,double distance,double targetHealthPercent,Host h){
         context(h);for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);if(!i.accepts(h.role(target)))continue;
+            if(id.equals("upgrade_ultimate_burst")&&h.ability()==3&&ultimateHits.add(target)){h.debuff(target,i,value(i,"AbilityDuration"));delayed.add(new RunnableAt(time+value(i,"DelayBeforeStun"),()->{h.damage(target,value(i,"Damage"));h.debuff(target,i,value(i,"StunDuration"));}));}
             if(distance<value(i,"CloseRangeBonusDamageRange"))damage*=1+value(i,"CloseRangeBonusWeaponPower")/100;
             if(value(i,"LongRangeBonusWeaponPowerMinRange")>0&&distance>=value(i,"LongRangeBonusWeaponPowerMinRange"))damage*=1+value(i,"LongRangeBonusWeaponPower")/100;
             if(value(i,"EnemyLifeThreshold")>0&&targetHealthPercent>=value(i,"EnemyLifeThreshold"))damage*=1+value(i,"BaseAttackDamagePercentBonus")/100;
@@ -170,7 +188,7 @@ public final class ItemEffects {
             if(value(i,"CritDamagePercent")>0&&random.nextDouble()*100<value(i,"ProcChance"))damage*=1+value(i,"CritDamagePercent")/100;
             if(value(i,"ProcBonusMagicDamage")>0&&proc(i,value(i,"AbilityCooldown")))h.damage(target,value(i,"ProcBonusMagicDamage"));
             if(value(i,"HealFromNPC")>0&&proc(i,value(i,"AbilityCooldown")))h.heal(value(i,h.role(target).hero()?"HealFromHero":"HealFromNPC"));
-            if(value(i,"RicochetTargets")>0){int n=0;for(int t:h.nearby(value(i,"RicochetRadius"),target))if(t!=target&&n++<value(i,"RicochetTargets"))h.damage(t,damage*value(i,"RicochetDamagePercent")/100);}
+            if(value(i,"RicochetTargets")>0){int n=0;for(int t:h.nearby(value(i,"RicochetRadius"),target))if(t!=target&&n++<value(i,"RicochetTargets"))h.damage(t,damage*value(i,"RicochetDamagePercent")/100,DamageKind.BULLET);}
             if(value(i,"DamagePerChain")>0&&random.nextDouble()*100<value(i,"ProcChance")&&proc(i,value(i,"ProcCooldown"))){int n=0;for(int t:h.nearby(value(i,"ChainRadius"),target))if(n++<value(i,"ChainCount"))h.damage(t,value(i,"DamagePerChain"));}
             boolean bulletDebuff=Set.of("upgrade_hollow_point_rounds","upgrade_weighted_shots","upgrade_slowing_bullets","upgrade_inhibitor","upgrade_tech_defense_shredders","upgrade_proc_silence","upgrade_headshot_booster2","upgrade_spellslinger_headshots","upgrade_banshee_slugs","upgrade_close_quarter_combat","upgrade_toxic_bullets","upgrade_tech_overflow").contains(id);
             if(id.equals("upgrade_hollow_point_rounds")&&h.health()/h.maxHealth()*100<value(i,"LifeThreshold"))bulletDebuff=false;
@@ -193,14 +211,14 @@ public final class ItemEffects {
             if(buff(id)&&id.equals("upgrade_split_shot")){int n=0;for(int t:h.nearby(15,target))if(t!=target&&n++<value(i,"BulletSplitShot"))h.damage(t,damage);}
         }return damage;
     }
-    public void onMelee(int target,boolean heavy,Host h){context(h);for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);
+    public void onMelee(int target,boolean heavy,Host h){context(h);breakInvisibility();for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);
         if((value(i,"SpiritDamage")>0||value(i,"LifestrikeHeal")>0||value(i,"LifestealHeal")>0)&&proc(i,value(i,"AbilityCooldown")*(heavy?1:Math.max(1,value(i,"LightMeleeCooldownMult"))))){
             if(id.equals("upgrade_spirit_snatch"))activateBuff(i,value(i,"AbilityDuration"));
-            h.damage(target,value(i,"SpiritDamage"));h.heal((value(i,"LifestrikeHeal")+value(i,"LifestealHeal")+h.maxHealth()*value(i,"LifestealHealPercent")/100)*(h.role(target).hero()?1:value(i,"NonHeroHealPct")/100));h.debuff(target,i,Math.max(value(i,"AbilityDuration"),value(i,"SlowDuration")));}
-        if(heavy&&value(i,"BonusHeavyMeleeDamage")>0&&proc(i,value(i,"AbilityCooldown"))){h.damage(target,value(i,"BonusHeavyMeleeDamage"));h.reload(100);
+            h.damage(target,value(i,"SpiritDamage"));h.heal((value(i,"LifestrikeHeal")+value(i,"LifestealHeal")+h.meleeDamage()*value(i,"LifestealHealPercent")/100)*(h.role(target).hero()?1:value(i,"NonHeroHealPct")/100));h.debuff(target,i,Math.max(value(i,"AbilityDuration"),value(i,"SlowDuration")));}
+        if(heavy&&value(i,"BonusHeavyMeleeDamage")>0&&proc(i,value(i,"AbilityCooldown"))){h.damage(target,value(i,"BonusHeavyMeleeDamage"),DamageKind.MELEE);h.reload(100);
             if(id.equals("upgrade_crushing_fists")){String key=id+":"+target;int n=stacks.merge(key,(int)value(i,"HeavyMeleeMultiplier"),Integer::sum);if(n>=value(i,"MaxStacks")){stacks.put(key,0);h.debuff(target,i,value(i,"StunDuration"));}}}
     }}
-    public void onCast(int index,Host h){context(h);for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);
+    public void onCast(int index,Host h){context(h);if(index==3)ultimateHits.clear();if(index==0||index==3)breakInvisibility();for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);
         
         if(index==3&&id.equals("upgrade_diviners_kevlar")&&proc(i,value(i,"AbilityCooldown"))){shield(i.id(),value(i,"CombatBarrier"),value(i,"BuffDuration"));activateBuff(i,value(i,"BuffDuration"));}
         if(id.equals("upgrade_enchanted_holsters")&&h.inCombat()){stacks.merge(id,1,(a,b)->Math.min((int)value(i,"MaxStacks"),a+b));activateBuff(i,value(i,"BuffDuration"));expirations.put(id,time+value(i,"BuffDuration"));}
@@ -216,16 +234,16 @@ public final class ItemEffects {
         if(id.equals("upgrade_mystic_reverb")&&h.ability()==inventory.bound(id)&&damage>=value(i,"MinimumDamage")&&proc(i,value(i,"AbilityCooldown")))delayed.add(new RunnableAt(time+value(i,"DelayDuration"),()->{for(int t:h.nearby(value(i,"Radius"),target))h.damage(t,damage*value(i,"TechDamagePercent")/100);}));
     }}
     public double incoming(double damage,boolean bullet,boolean spirit,Host h){context(h);
-        if(!bullet&&spellParryUntil>time){var counter=ItemCatalog.ITEMS.get("upgrade_counterspell");if(counter!=null&&inventory.owned.contains(counter.id())){h.heal(value(counter,"HealOnSuccess"));activateBuff(counter,value(counter,"BuffDuration"));}return 0;}
+        if(!bullet&&spellParryUntil>time){var counter=ItemCatalog.ITEMS.get("upgrade_counterspell");if(counter!=null&&inventory.owned.contains(counter.id())&&!spellParryHealed){spellParryHealed=true;h.heal(value(counter,"HealOnSuccess"));activateBuff(counter,value(counter,"BuffDuration"));}return 0;}
         if(buff("upgrade_self_bubble")&&time<etherealUntil||bullet&&buff("upgrade_metal_skin"))return 0;
-        invisibleUntil=0;lastDamage=time;zones.removeIf(z->z.item.id().equals("upgrade_health_stimpak")&&z.center==0&&h.enemyHeroDamage());
+        if(!invisibilityItem.isEmpty()){var invis=ItemCatalog.ITEMS.get(invisibilityItem);if(value(invis,"InvisCancelOnDamage")>0)breakInvisibility();else revealUntil=time+value(invis,"RevealOnDamageDuration");}lastDamage=time;zones.removeIf(z->z.item.id().equals("upgrade_health_stimpak")&&z.center==0&&h.enemyHeroDamage());
         for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);
             if(id.equals("upgrade_berserker")){expirations.put(id,time+value(i,"DamageDuration"));double a=accum.getOrDefault(id,0D)+damage;int n=(int)(a/value(i,"DamageToStack"));accum.put(id,a-n*value(i,"DamageToStack"));stacks.merge(id,n,(x,y)->Math.min((int)value(i,"MaxStacks"),x+y));}
             
             if(id.equals("upgrade_absorbing_armor")&&spirit&&damage>=value(i,"DamageThreshold")&&proc(i,value(i,"AbilityCooldown")))h.reduceCooldown(value(i,"CooldownReductionPerHit"),0);
             if((bullet&&id.equals("upgrade_weapon_shielding")||spirit&&id.equals("upgrade_spirit_bubble"))){double a=damageWindows.computeIfAbsent(id,k->new DamageWindow()).add(time,value(i,"DamageWindow"),damage);if(a>=value(i,"DamageThreshold")&&proc(i,value(i,"AbilityCooldown"))){shield(i.id(),value(i,"CombatBarrier"),value(i,"BarrierDuration"));damageWindows.get(id).clear();}}
             if(id.equals("upgrade_spellbreaker")&&spirit&&damage>=value(i,"DamageThreshold")&&proc(i,value(i,"AbilityCooldown")))damage*=1-value(i,"SpiritDamageReductionProc")/100;
-            if(id.equals("upgrade_deflecting_armor")&&bullet)damage*=1-value(i,"DeflectionPercent")/100;
+            if(id.equals("upgrade_deflecting_armor")&&bullet&&random.nextDouble()*100<value(i,"DeflectionPercent"))return 0;
             if(id.equals("upgrade_cheat_death")&&damage>=h.health()&&proc(i,value(i,"AbilityCooldown"))){activateBuff(i,value(i,"DeathImmunityDuration"));damage=Math.min(damage,h.health()-1);}
         }
         if(buff("upgrade_cheat_death"))damage=Math.min(damage*.4,Math.max(0,h.health()-1));
@@ -236,9 +254,12 @@ public final class ItemEffects {
     public boolean procTarget(ItemCatalog.Item i,int target,double cooldown){String key=i.id()+":"+target;if(procs.getOrDefault(key,0D)>time)return false;procs.put(key,time+cooldown);return true;}
     public boolean piercing(){var i=ItemCatalog.ITEMS.get("upgrade_aprounds");return i!=null&&inventory.owned.contains(i.id())&&random.nextDouble()*100<value(i,"ProcChance");}
     public void targetDamaged(int target,boolean heroDamage){if(heroDamage)zones.removeIf(z->z.item.id().equals("upgrade_health_stimpak")&&z.center==target);}
+    public double regeneration(double maximumHealth){double n=0;for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);if(buff(id))n+=value(i,"Regeneration");if(time-lastDamage>=value(i,"RestoreDelay"))n+=maximumHealth*value(i,"HealLifePercentOutOfCombat")/100;}return n;}
     public void onHealed(double amount){for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);if(id.equals("upgrade_healbuff")&&amount>=value(i,"MinimumHealAmount")&&proc(i,value(i,"AbilityCooldown")))activateBuff(i,value(i,"BuffDuration"));}}
     public void onEnemyAbility(double distance){for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);if(id.equals("upgrade_restorative_locket")&&distance<=value(i,"Radius"))stacks.merge(id,1,(a,b)->Math.min((int)value(i,"MaxStacks"),a+b));}}
     public void onWeaponDamage(int target,double damage,Host h){context(h);for(String id:inventory.owned){var i=ItemCatalog.ITEMS.get(id);if(id.equals("upgrade_rechargingbullets")){var window=damageWindows.computeIfAbsent(id,k->new DamageWindow());if(window.add(time,value(i,"DamageWindow"),damage)>=value(i,"DamageThreshold")&&proc(i,value(i,"AbilityCooldown"))){h.replenishCharge();window.clear();}}}}
-    public void beginParry(Host h){var i=ItemCatalog.ITEMS.get("upgrade_counterspell");if(inventory.owned.contains(i.id())&&proc(i,value(i,"AbilityCooldown")))spellParryUntil=time+value(i,"SpellParryDuration");}
-    public void breakInvisibility(){if(invisibleUntil>time){invisibleUntil=0;var i=ItemCatalog.ITEMS.get("upgrade_cloaking_device_active");activateBuff(i,value(i,"AmbushDuration"));}}
+    public void beginParry(Host h){var i=ItemCatalog.ITEMS.get("upgrade_counterspell");if(inventory.owned.contains(i.id())&&proc(i,value(i,"AbilityCooldown"))){spellParryHealed=false;spellParryUntil=time+value(i,"SpellParryDuration");}}
+    public boolean invisible(){return !invisibilityItem.isEmpty()&&inventory.owned.contains(invisibilityItem)&&time>=invisibleFrom&&time<invisibleUntil&&time>=revealUntil;}
+    public void onVeilCrossed(Host h){var i=ItemCatalog.ITEMS.get("upgrade_veil_walker");if(!inventory.owned.contains(i.id())||!proc(i,value(i,"AbilityCooldown")))return;context(h);h.heal(value(i,"HealOnVeil"));activateBuff(i,value(i,"AbilityDuration"));invisibilityItem=i.id();invisibleFrom=time+value(i,"InvisFadeToDuration");invisibleUntil=time+value(i,"InvisDuration");}
+    public void breakInvisibility(){if(!invisibilityItem.isEmpty()){var id=invisibilityItem;invisibilityItem="";invisibleUntil=0;if(id.equals("upgrade_cloaking_device_active")){var i=ItemCatalog.ITEMS.get(id);activateBuff(i,value(i,"AmbushDuration"));}}}
 }

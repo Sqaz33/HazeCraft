@@ -7,11 +7,12 @@ public final class Abilities {
     public double time, smokeStart=-100, smokeUntil, buffUntil, flurryStart, flurryUntil, daggerAt=-1;
     public int smokeCharges=1;
     public double itemSpirit,itemWeaponPercent,itemCooldownReduction,itemDurationPercent,itemRangePercent,itemRadiusPercent;
+    public double itemChargedSpirit;
     public int itemCharges;public double itemChargeReduction,itemChargeCooldownReduction,itemUltimateReduction;
     private double smokeNextRecharge;
     public Abilities(Retail data) { this.data=data; }
     public double p(int index,String name) {
-        double value=data.prop(Retail.SIGNATURES[index],name,ranks[index],itemSpirit+itemImbuedSpirit[index],itemWeaponPercent);
+        double value=data.prop(Retail.SIGNATURES[index],name,ranks[index],itemSpirit+itemImbuedSpirit[index]+(index==1?itemChargedSpirit:0),itemWeaponPercent);
         if(name.equals("AbilityCooldown"))value*=(1-itemCooldownReduction)*(1-(index==1?itemChargeCooldownReduction:index==3?itemUltimateReduction:0));
         if(name.equals("AbilityCooldownBetweenCharge"))value*=1-itemChargeReduction;
         if(name.equals("AbilityDuration")||name.equals("SleepDuration"))value*=1+itemDurationPercent/100;
@@ -32,7 +33,7 @@ public final class Abilities {
             smokeCharges--; smokeStart=time;
             smokeUntil=time+p(1,"AbilityDuration");
             if(smokeNextRecharge<=time) smokeNextRecharge=time+p(1,"AbilityCooldown");
-            readyAt[1]=time+(ranks[1]>=2?p(1,"AbilityCooldownBetweenCharge"):p(1,"AbilityCooldown"));
+            readyAt[1]=time+((ranks[1]>=2?2:1)+itemCharges>1?Math.max(0,p(1,"AbilityCooldownBetweenCharge")):p(1,"AbilityCooldown"));
         } else {
             readyAt[index]=time+p(index,"AbilityCooldown");
             if(index==0) daggerAt=time+p(0,"AbilityCastDelay");

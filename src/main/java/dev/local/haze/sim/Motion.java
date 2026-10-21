@@ -25,6 +25,7 @@ public final class Motion {
     private double staminaRegenMultiplier;
     private final JsonObject dashCurve;
     public final MeleeController melee;
+    public double itemShootPenaltyReduction,itemZoomPenaltyReduction,itemAirControl,itemAirAcceleration,itemParryCooldownReduction;
     public double itemMoveSpeed,itemSprintSpeed,itemStamina,itemStaminaRegenReduction;
     private static final double UNIT=0.0254;
     public V3 velocity=V3.ZERO;
@@ -224,8 +225,8 @@ public final class Motion {
         if(capSpeed>=0) max=Math.min(max,capSpeed);
         if(melee.phase==MeleeController.Phase.CHARGING)max=Math.min(max,melee.chargeMoveSpeed());
         max=Math.max(0,max+melee.speedBonus());
-        if(input.down(Controls.FIRE)) max*=shootScale;
-        if(input.down(Controls.AIM)) max*=zoomScale;
+        if(input.down(Controls.FIRE)) max*=1-(1-shootScale)*(1-Math.clamp(itemShootPenaltyReduction/100,0,1));
+        if(input.down(Controls.AIM)) max*=1-(1-zoomScale)*(1-Math.clamp(itemZoomPenaltyReduction/100,0,1));
         if(time<parryUntil) max*=p(PARRY,"ParryMoveSpeed")/100;
         double speed=velocity.horizontal();
         if(grounded && speed>0) {
@@ -248,10 +249,11 @@ public final class Motion {
                 (float)drag,(float)n("sv_stopspeed"),1,(float)dt).mul(UNIT);
             float controlScale=time<dashJumpUntil+f(JUMP,"m_flDashJumpExtraAirControlTime")-f(JUMP,"m_flDashJumpMantleDisableTime")?
                 JumpImpulse.bonusScale((float)f(JUMP,"m_flDashJumpExtraAirControlPercent")):1;
+            controlScale*=1+itemAirControl/100;
             float accelerationScale=airDashing?JumpImpulse.bonusScale((float)f(DASH,"m_flAirDashAccPct")):1;
             velocity=AirAcceleration.apply(velocity.mul(1/UNIT),wish,(float)(Math.max(max,airSpeedOverride)/UNIT),(float)(airSpeedOverride/UNIT),
                 (float)n("citadel_aircontrol_speed_slow"),(float)n("citadel_aircontrol_speed_fast"),controlScale,
-                (float)n("sv_airaccelerate"),accelerationScale,(float)dt).mul(UNIT);
+                (float)n("sv_airaccelerate"),(float)(accelerationScale*(1+itemAirAcceleration/100)),(float)dt).mul(UNIT);
         }
         double current=velocity.dot(wish),add=wishSpeed-current;
         if(grounded&&add>0) {

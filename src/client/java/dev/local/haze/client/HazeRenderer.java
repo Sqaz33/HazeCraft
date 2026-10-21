@@ -26,7 +26,7 @@ public final class HazeRenderer {
         .withVertexFormat(DefaultVertexFormat.NEW_ENTITY,VertexFormat.Mode.TRIANGLES)
         .withSampler("Sampler1").withCull(false).withBlend(BlendFunction.TRANSLUCENT)
         .withShaderDefine("ALPHA_CUTOUT",0.1F).build();
-    public record ActorFrame(Vec3 position,float yaw,SkinnedAsset.Geometry[] geometry,int light,int alpha) {}
+    public record ActorFrame(Vec3 position,float yaw,SkinnedAsset.Geometry[] geometry,int light,int alpha,float scale) {}
     public record Label(Vec3 position,int count) {}
     private static List<ActorFrame> frames=List.of();
     private static List<Label> labels=List.of();
@@ -50,7 +50,7 @@ public final class HazeRenderer {
             Motion motion=own?HazeClient.motion:null;
             String clip=chooseClip(state,motion,own?HazeClient.controls:Controls.NONE);
             double time=state.time+partial*0.05;
-            if(clip.contains("reload")&&asset.clips.containsKey(clip))time=asset.clips.get(clip).duration()*Math.min(1,(Retail.DATA.weapon().get("m_reloadDuration").getAsDouble()-state.reload+partial*0.05)/Retail.DATA.weapon().get("m_reloadDuration").getAsDouble());
+            if(clip.contains("reload")&&asset.clips.containsKey(clip))time=asset.clips.get(clip).duration()*Math.min(1,(state.reloadDuration-state.reload+partial*0.05)/state.reloadDuration);
             if(clip.contains("dash")&&motion!=null)time=motion.time-(motion.mode==Motion.Mode.AIR&&motion.jumpKind==Motion.JumpKind.WALL?motion.jumpStart:motion.dashStart)+partial*0.05;
             if(clip.contains("mantle")&&motion!=null)time=motion.time-motion.mantleStart+partial*0.05;
             if((clip.endsWith("jump_ground")||clip.endsWith("jump_invis_start"))&&motion!=null)time=motion.time-motion.jumpStart+partial*0.05;
@@ -75,7 +75,7 @@ public final class HazeRenderer {
             boolean running=motion!=null&&motion.velocity.horizontal()>0.2;
             List<SkinnedAsset.Layer> layers=new ArrayList<>(locomotionLayers);
             layers.addAll(HazePose.layers(asset,clip,time,loop,motion==null?Motion.Mode.IDLE:motion.mode,state.smoke,motion!=null&&motion.crouchedPose(),running,
-                entity.getXRot(partial),0,state.daggerTime+partial*0.05,state.reload,
+                entity.getXRot(partial),0,state.daggerTime+partial*0.05,state.reload/state.reloadDuration*Retail.number(Retail.DATA.weapon().get("m_reloadDuration")),
                 state.time-state.rightShot+partial*0.05,state.time-state.leftShot+partial*0.05));
             var pose=asset.pose(clip,time,loop,layers);
             if(own)for(int bone=0;bone<asset.nodes.length;bone++)if(asset.nodes[bone].name().equals("pelvis")){var root=pose[bone].getTranslation(new org.joml.Vector3f());currentBodyOffset=Math.hypot(root.x,root.z);break;}
@@ -88,7 +88,7 @@ public final class HazeRenderer {
             if(clip.contains("melee")&&(motion!=null?motion.melee.locksMovement():!state.meleePhase.equals("NONE")&&!state.meleePhase.equals("CHARGING")))modelYaw=motion!=null?motion.melee.yaw:state.meleeYaw;
             if(motion!=null&&(motion.mode==Motion.Mode.DASH_GROUND||motion.mode==Motion.Mode.DASH_AIR))
                 modelYaw=DashVisuals.yaw(clip,motion.dashDirection,modelYaw);
-            actors.add(new ActorFrame(pos,modelYaw,geometry,light,state.invisible?100:255));
+            actors.add(new ActorFrame(pos,modelYaw,geometry,light,state.invisible?100:255,(float)state.itemModelScale));
             for(ClientState.Stack stack:state.stacks) {
                 Entity mob=mc.level.getEntity(stack.id());if(mob==null||(!stack.sleep()&&stack.count()==0))continue;
                 if(stack.count()>0)text.add(new Label(mob.position().add(0,mob.getBbHeight()+0.35,0),stack.count()));
@@ -139,7 +139,7 @@ public final class HazeRenderer {
         for(ActorFrame frame:frames) {
             matrices.pushPose();matrices.translate(frame.position.x-camera.x,frame.position.y-camera.y,frame.position.z-camera.z);
             // Neutral aim is the middle of the heading sweep: the original model faces +Z.
-            matrices.mulPose(Axis.YP.rotationDegrees(-frame.yaw));
+            matrices.mulPose(Axis.YP.rotationDegrees(-frame.yaw));matrices.scale(frame.scale,frame.scale,frame.scale);
             for(int p=0;p<asset.primitives.length;p++) {
                 SkinnedAsset.Primitive primitive=asset.primitives[p];SkinnedAsset.Geometry geometry=frame.geometry[p];
                 if(!HazePerformance.reference){meshes[p].draw(type(primitive.texture()),matrices.last(),primitive,geometry,frame.light,frame.alpha);continue;}

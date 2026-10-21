@@ -22,8 +22,9 @@ public final class Gun {
     }
     public double f(String key) { return Retail.number(w.get(key)); }
     public int clipSize(double spirit) { return Math.max(1,(int)Math.floor((f("m_iClipSize")+spirit*0.5)*(1+itemClipPercent/100)+itemClipFlat)); }
+    public double reloadDuration(){return f("m_reloadDuration")*Math.max(.1,1+itemReloadPercent/100);}
     public void reload(double spirit) {
-        if (reloadRemaining<=0 && ammo<clipSize(spirit)) reloadRemaining=f("m_reloadDuration")/Math.max(.1,1+itemReloadPercent/100);
+        if (reloadRemaining<=0 && ammo<clipSize(spirit)) reloadRemaining=reloadDuration();
     }
     public List<Shot> advance(double dt, boolean fire, boolean aim, boolean infiniteClip, boolean sliding, double fireRateBonus, double damageBonus, double spirit) {
         if (dt<=0 || dt>0.1) throw new IllegalArgumentException("Invalid weapon dt");

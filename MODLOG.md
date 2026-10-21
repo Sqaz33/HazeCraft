@@ -595,3 +595,18 @@ Separated bullet/spirit damage types; fixed cleanup of actor-owned modifiers.
 Added targeted executable scenarios for 12 additional item/target rules.
 Complete native parity is still not established, particularly buildup rate,
 Goose hatching rewards and environmental veil triggers.
+
+### Stage 3 — combat/animation/movement integration and build
+0.3.14-item-rules. Added distinct melee damage, true returned bullets, source
+vamp/melee-heal handling, proportional Locket restore, charged Smoke timing,
+spirit clip scaling, independent barrier cleanup, real Plated Armor deflections,
+Shadow Weave fade/ambush and source Veil Walker event (debug only in MC).
+Colossus scales mesh, camera and collision capsule; Fleetfoot removes shooting
+penalties; Holsters negative reload time updates actual reload + animation/HUD.
+Native RTTI navigation tool now bounds disassembly using PE .pdata fragments;
+old unbounded/tail-jump dumps are navigation only, not semantic evidence.
+Full build: 154 discovered, 140 passed, 14 skipped owner-only replay fixtures
+missing after old lab deletion, 0 failures. Targeted item/rules suites executed;
+no game-control/visual verification. Package validator passed, nested Fabric API
+and owned resources retained. Source manifest is private in current lab.
+Goal remains incomplete: see SHOP_STATUS.md for unported/unconfirmed rules.

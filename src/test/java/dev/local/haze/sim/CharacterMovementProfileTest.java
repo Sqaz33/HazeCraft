@@ -11,8 +11,8 @@ final class CharacterMovementProfileTest {
     @Test void currentCharacterBindingsResolveWithoutHazeSpecificAbilityNames() throws Exception {
         Path directory=Path.of(System.getProperty("haze.movement.profiles",
             "D:/DeadlockHazeLab/research/25939744/movement"));
-        JsonObject profiles=JsonParser.parseString(Files.readString(directory.resolve("profiles.json"))).getAsJsonObject();
-        JsonObject definitions=JsonParser.parseString(Files.readString(directory.resolve("shared-definitions.json"))).getAsJsonObject();
+        JsonObject profiles=JsonParser.parseString(RetailTestFixtures.read(directory.resolve("profiles.json"))).getAsJsonObject();
+        JsonObject definitions=JsonParser.parseString(RetailTestFixtures.read(directory.resolve("shared-definitions.json"))).getAsJsonObject();
         int complete=0;
         boolean differentCharacterSpeed=false,differentMeleeBinding=false;
         for(var entry:profiles.entrySet()) {

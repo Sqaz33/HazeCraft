@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CameraHeightBlendTest {
     @Test void matches192NativeCasesAndReversalTraces() throws Exception {
-        JsonObject data=JsonParser.parseString(Files.readString(Path.of("D:/DeadlockHazeLab/research/25950029/camera/native-blend-cases.json"))).getAsJsonObject();
+        JsonObject data=JsonParser.parseString(RetailTestFixtures.read(Path.of("D:/DeadlockHazeLab/research/25950029/camera/native-blend-cases.json"))).getAsJsonObject();
         assertEquals("25950029",data.get("build").getAsString());
         assertEquals("fadaf78301af6d47d286de6199d1fd0aba7053f6ab597afa3de55369f72424c6",data.get("sourceSha256").getAsString());
         assertEquals(192,data.getAsJsonArray("cases").size());
