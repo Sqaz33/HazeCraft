@@ -634,3 +634,11 @@ scaling (0x180b95c72), normalized fill/duration modes (0x1805970f0), weapon
 rate read (0x180baee20). The final default weapon-rate resolver is not yet
 established; the old approximation is explicitly still pending.
 Private JAR SHA256: 298f5a377a86b04b3b171d33197eacd054af6ca997e826295514f0ecc2a9f7d4.
+
+### Direct-launch repair
+First replay of the launcher's flattened log started vanilla: the recorded
+`-DFabricMcEmu= net.minecraft.client.main.Main` split an intended JVM property
+into a bare main class ahead of KnotClient. Added a reusable direct-launch
+helper that restores the property argument, empty account fields and spaced
+XX flags, and refuses bare JVM arguments before Fabric. Account arguments stay
+in memory; no command line or credentials are printed or committed.
