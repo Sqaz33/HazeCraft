@@ -166,7 +166,7 @@ public final class HazeClient implements ClientModInitializer,HazeHooks.ClientMo
         if(!(player instanceof LocalPlayer p)||!active||motion==null||p.isPassenger())return false;
         ClientState state=own();
         if(state!=null){if(state.itemMovementSerial!=lastItemMovement){lastItemMovement=state.itemMovementSerial;motion.velocity=new V3(motion.velocity.x(),state.itemImpulse,motion.velocity.z());motion.grounded=false;}
-        if(state.itemStaminaSerial!=lastItemStamina){lastItemStamina=state.itemStaminaSerial;motion.stamina=motion.maxStamina();}}
+        if(state.itemStaminaSerial!=lastItemStamina){lastItemStamina=state.itemStaminaSerial;motion.stamina=Math.min(motion.maxStamina(),motion.stamina+state.itemStaminaRestore);}}
         motion.itemMoveSpeed=0;motion.itemSprintSpeed=0;motion.itemStamina=0;motion.itemStaminaRegenReduction=0;
         if(state!=null){
             var inventory=state.itemInventory;

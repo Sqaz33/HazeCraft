@@ -577,3 +577,21 @@ level table growth (1..36), I live server stat panel, F8 character controls.
 Fixed Torment Pulse cooldown/target cap from actual item data (1.4 s, 2).
 Targeted Item/CharacterProgression suites and compileClientJava passed.
 This does not establish native-code parity for all item rules.
+
+### Stage 2 — item rule repair and selected-ability bindings
+Implemented explicit imbue packet + server validation + save migration + UI.
+Moved Surge of Power spirit to selected ability; Quicksilver/Echo now respect
+selection. Read current localized descriptions, modifier registrations and
+server.dll (offline) instead of assuming every property is a normal passive:
+reserved corrupted Glass Cannon slowing is no longer applied to normal item.
+Fixed Locket enemy-cast trigger, proportional stamina (server vtable slot 332,
+0x18046ead0; MaxStacks/MaxStaminaRestore property caches at +0x1560/+0x1770),
+Recharging Rush outgoing damage/charge restore, Witchmail seconds reduction,
+Nova allied recipients, Rescue channel healing, Focus Lens delayed damage,
+Counterspell spell-only parry, independent barrier pools and damage windows.
+Armor Piercer native proc slot 118 sets bullet resistance bypass to 100;
+owned localization confirms pass-through. Projectile hit history added.
+Separated bullet/spirit damage types; fixed cleanup of actor-owned modifiers.
+Added targeted executable scenarios for 12 additional item/target rules.
+Complete native parity is still not established, particularly buildup rate,
+Goose hatching rewards and environmental veil triggers.

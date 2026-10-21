@@ -17,6 +17,7 @@ public final class HazeMod implements ModInitializer {
         PayloadTypeRegistry.playC2S().register(HazeProtocol.Input.TYPE,HazeProtocol.Input.CODEC);
         PayloadTypeRegistry.playC2S().register(HazeProtocol.Debug.TYPE,HazeProtocol.Debug.CODEC);
         PayloadTypeRegistry.playC2S().register(HazeProtocol.Shop.TYPE,HazeProtocol.Shop.CODEC);
+        PayloadTypeRegistry.playC2S().register(HazeProtocol.Imbue.TYPE,HazeProtocol.Imbue.CODEC);
         PayloadTypeRegistry.playS2C().register(HazeProtocol.Snapshot.TYPE,HazeProtocol.Snapshot.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(HazeProtocol.Input.TYPE,(packet,context)->{
             ServerPlayer p=context.player();ACTORS.computeIfAbsent(p.getUUID(),HazeActor::new).accept(packet,p);
@@ -28,6 +29,9 @@ public final class HazeMod implements ModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(HazeProtocol.Shop.TYPE,(packet,context)->{
             var actor=ACTORS.get(context.player().getUUID());if(actor!=null&&actor.active)actor.shop(packet,context.player());
         });
+        ServerPlayNetworking.registerGlobalReceiver(HazeProtocol.Imbue.TYPE,(packet,context)->{
+            var actor=ACTORS.get(context.player().getUUID());if(actor!=null&&actor.active)actor.imbue(packet,context.player());
+        });
         ServerPlayConnectionEvents.DISCONNECT.register((handler,server)->{HazeActor a=ACTORS.remove(handler.player.getUUID());if(a!=null&&a.active)a.toggle(handler.player);});
         ServerTickEvents.END_SERVER_TICK.register(server->{
             for(ServerPlayer p:server.getPlayerList().getPlayers()) {
@@ -36,6 +40,10 @@ public final class HazeMod implements ModInitializer {
                 HazeProtocol.Snapshot packet=new HazeProtocol.Snapshot(a.snapshot(p));
                 for(ServerPlayer viewer:server.getPlayerList().getPlayers()) if(ServerPlayNetworking.canSend(viewer,HazeProtocol.Snapshot.TYPE)) ServerPlayNetworking.send(viewer,packet);
             }
+        });
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity,world)->{
+            if(entity instanceof net.minecraft.world.entity.projectile.Projectile projectile&&!(entity instanceof net.minecraft.world.entity.projectile.arrow.AbstractArrow)&&projectile.getOwner() instanceof Mob caster)
+                for(var actor:ACTORS.values()){if(actor.active&&actor.itemSilenced(caster.getId())){projectile.discard();break;}actor.enemyAbility(caster);}
         });
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity,source,amount)->{
             HazeActor a=ACTORS.get(entity.getUUID());
@@ -48,6 +56,7 @@ public final class HazeMod implements ModInitializer {
             if(taken<=0)return;
             HazeActor damaged=ACTORS.get(entity.getUUID());if(damaged!=null&&damaged.active)damaged.combat(source.getEntity());
             for(HazeActor actor:ACTORS.values())if(actor.active&&actor.dimension==entity.level().dimension()){
+                actor.damagedEntity(entity,source);actor.captureItemDamage(entity.getId(),taken);
                 var f=actor.targets.get(entity.getId());if(f!=null)f.damaged(dev.local.haze.sim.Retail.DATA,actor.abilities.ranks[0],actor.abilities.time);
             }
         });

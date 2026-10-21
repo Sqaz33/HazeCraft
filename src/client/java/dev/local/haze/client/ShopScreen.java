@@ -46,7 +46,8 @@ public final class ShopScreen extends Screen {
                     var item=items.get(index);float x=left+660+cat*380+(index%4)*91,cy=y+(index/4)*108;if(cy+100<130||cy>880)continue;
                     boolean owned=inventory.owned.contains(item.id()),hover=mx>=x&&mx<x+84&&my>=cy&&my<cy+101;
                     g.fill((int)x,(int)cy,(int)x+84,(int)cy+80,owned?0xffd0dfaa:COLORS[cat]);icon(g,item,x+5,cy+3,74);
-                    if(item.active())text(g,"◆",x+66,cy+2,16,"radiance",0xff10130d);
+                    if(ItemInventory.needsImbue(item))text(g,"СКМ — выбрать усиливаемое умение",left+60,760,19,"radiance",0xffa4d8ce);
+            if(item.active())text(g,"◆",x+66,cy+2,16,"radiance",0xff10130d);
                     text(g,owned?"КУПЛЕНО":""+inventory.price(item.id()),x+3,cy+81,15,"radiance",owned?0xffb9db9b:0xffdfd7c7);cards.add(new Card(item.id(),x,Math.max(130,cy),84,Math.min(880,cy+101)-Math.max(130,cy)));
                     if(hover){selected=item.id();g.fill((int)x,(int)cy,(int)x+84,(int)cy+2,0xffffefd7);}
                 }
@@ -57,6 +58,7 @@ public final class ShopScreen extends Screen {
         if(item!=null){
             icon(g,item,left+60,230,128);text(g,item.name(),left+60,380,29,"oracle",0xffffefd7);text(g,""+inventory.price(item.id())+" ДУШ",left+60,420,23,"radiance",0xffa4d8ce);
             int row=0;for(var stat:item.stats().entrySet())if(stat.getValue()!=0){text(g,String.format(Locale.ROOT,"%+.1f %s%s",stat.getValue(),ItemCatalog.label(stat.getKey()),ItemCatalog.APPLIED.contains(stat.getKey())?"":" (не действует)"),left+60,465+row++*26,18,"radiance",0xffd4d7cb);if(row>=9)break;}
+            if(ItemInventory.needsImbue(item))text(g,"СКМ — выбрать усиливаемое умение",left+60,760,19,"radiance",0xffa4d8ce);
             if(item.active())text(g,"Применение: Z / X / C / V по порядку покупки",left+60,735,19,"radiance",0xffe2bb79);
             if(!item.components().isEmpty()){text(g,"КОМПОНЕНТЫ",left+60,780,20,"oracle",0xffd4d7cb);int n=0;for(String component:item.components()){var base=ItemCatalog.ITEMS.get(component);if(base!=null)icon(g,base,left+60+n++*70,815,60);}}
         }
@@ -69,6 +71,6 @@ public final class ShopScreen extends Screen {
         var state=HazeClient.own();if(state!=null)text(g,state.shopMessage,left+60,1015,19,"radiance",0xffb7c0b0);
         g.pose().popMatrix();super.render(g,mouseX,mouseY,partial);
     }
-    @Override public boolean mouseClicked(MouseButtonEvent event,boolean doubleClick){float x=(float)event.x()/scale,y=(float)event.y()/scale;for(var card:cards)if(x>=card.x&&x<card.x+card.w&&y>=card.y&&y<card.y+card.h){HazeClient.shop(card.id,event.button()==1);return true;}return super.mouseClicked(event,doubleClick);}
+    @Override public boolean mouseClicked(MouseButtonEvent event,boolean doubleClick){float x=(float)event.x()/scale,y=(float)event.y()/scale;for(var card:cards)if(x>=card.x&&x<card.x+card.w&&y>=card.y&&y<card.y+card.h){var item=ItemCatalog.ITEMS.get(card.id);if(event.button()==2&&inventory().owned.contains(card.id)&&ItemInventory.needsImbue(item)){minecraft.setScreen(new ImbueScreen(this,item));return true;}HazeClient.shop(card.id,event.button()==1);if(event.button()==0&&ItemInventory.needsImbue(item))minecraft.setScreen(new ImbueScreen(this,item));return true;}return super.mouseClicked(event,doubleClick);}
     @Override public boolean mouseScrolled(double x,double y,double horizontal,double vertical){scroll=Math.max(0,Math.min(maxScroll,scroll-(float)vertical*100));return true;}
 }

@@ -19,6 +19,7 @@ import java.util.*;
 
 public final class HazeActor {
     private static final Retail DATA=Retail.DATA;
+    private static final ResourceKey<DamageType> SPIRIT=ResourceKey.create(Registries.DAMAGE_TYPE,Identifier.fromNamespaceAndPath("haze","spirit"));
     private static final ResourceKey<DamageType> BULLET=ResourceKey.create(Registries.DAMAGE_TYPE,Identifier.fromNamespaceAndPath("haze","bullet"));
     public final UUID owner;
     public boolean active;
@@ -36,9 +37,13 @@ public final class HazeActor {
     private final Map<Integer,Map<String,ItemDebuff>> itemDebuffs=new HashMap<>();
     private final Map<Integer,Map<String,ItemDebuff>> alliedItemBuffs=new HashMap<>();
     private final Map<Integer,Double> alliedShieldExpiry=new HashMap<>();
-    private record ItemDebuff(ItemCatalog.Item item,double until){}
+    private record ItemDebuff(ItemCatalog.Item item,double until,double started){ItemDebuff(ItemCatalog.Item item,double until){this(item,until,until);}}
+    private record HealthSteal(int entity,Identifier modifier,double amount,double until){}
+    private final List<HealthSteal> healthSteals=new ArrayList<>();private long nextHealthSteal;
+    private final Map<Integer,Double> focusedDamage=new HashMap<>();
     private final Map<Integer,Vec3> itemZonePoints=new HashMap<>();
-    private boolean itemDamage;private int nextItemPoint=-3;
+    private int itemAbilityContext=-1;
+    private boolean itemDamage,incomingEnemyHero;private int nextItemPoint=-3;
     private boolean itemsLoaded;
     public final Map<Integer,Fixation> targets=new HashMap<>();
     public final List<Projectile> projectiles=new ArrayList<>();
@@ -52,7 +57,9 @@ public final class HazeActor {
     public double actionTime;
     public double daggerStarted=-100;
     public double lastLeftShot=-100,lastRightShot=-100;
-    public record Projectile(V3 position,V3 velocity,V3 origin,double remaining,boolean dagger,double damage,long id) {}
+    public record Projectile(V3 position,V3 velocity,V3 origin,double remaining,boolean dagger,double damage,long id,boolean piercing,Set<Integer> hitEntities) {
+        public Projectile(V3 position,V3 velocity,V3 origin,double remaining,boolean dagger,double damage,long id){this(position,velocity,origin,remaining,dagger,damage,id,false,new HashSet<>());}
+    }
     public record Trace(long id,double time,V3 start,V3 end,boolean dagger){}
     public HazeActor(UUID owner) { this.owner=owner; }
     public void toggle(ServerPlayer p) {
@@ -105,26 +112,26 @@ public final class HazeActor {
         if(debugNoCooldowns)items.readyAt.clear();
         traces.removeIf(trace->abilities.time-trace.time>0.5);
         double before=abilities.time;
-        if(input.edge(Controls.DAGGER) && abilities.cast(0)) {itemEffects.onCast(0,itemHost(p));daggerStarted=abilities.time;setAction("dagger");}
-        if(input.edge(Controls.SMOKE) && abilities.cast(1)) {
+        if(!itemEffects.busy()&&input.edge(Controls.DAGGER) && abilities.cast(0)) {itemEffects.onCast(0,itemHost(p));daggerStarted=abilities.time;setAction("dagger");}
+        if(!itemEffects.busy()&&input.edge(Controls.SMOKE) && abilities.cast(1)) {
             itemEffects.onCast(1,itemHost(p));setAction("smoke");
             if(abilities.p(1,"DispelOnUse")>0){
                 for(var effect:new ArrayList<>(p.getActiveEffects()))if(effect.getEffect().value().getCategory()==net.minecraft.world.effect.MobEffectCategory.HARMFUL)p.removeEffect(effect.getEffect());
                 p.clearFire();
             }
         }
-        if(input.edge(Controls.FLURRY)) {
+        if(!itemEffects.busy()&&input.edge(Controls.FLURRY)) {
             if(abilities.flurry()) abilities.flurryUntil=abilities.time;
             else if(abilities.cast(3)){itemEffects.onCast(3,itemHost(p));setAction("flurry");}
         }
         if(input.edge(Controls.PARRY) && abilities.time>=parryReady) {
             parryReady=abilities.time+DATA.prop("citadel_ability_melee_parry","AbilityCooldown",0);
-            parryUntil=abilities.time+DATA.field("citadel_ability_melee_parry","m_flActiveTime");setAction("parry");
+            itemEffects.beginParry(itemHost(p));parryUntil=abilities.time+DATA.field("citadel_ability_melee_parry","m_flActiveTime");setAction("parry");
         }
         for(int sub=0;sub<6;sub++) {
             abilities.advance(dt/6);
             long strikeBefore=melee.strikeSerial,actionBefore=melee.serial;
-            melee.step(dt/6,input,p.onGround(),input.down(Controls.SLIDING)&&input.down(Controls.CROUCH),!abilities.flurry()&&abilities.time>=parryUntil);
+            melee.step(dt/6,input,p.onGround(),input.down(Controls.SLIDING)&&input.down(Controls.CROUCH),!itemEffects.busy()&&!abilities.flurry()&&abilities.time>=parryUntil);
             if(input.edge(Controls.PARRY))melee.cancel();
             if(melee.serial!=actionBefore){abilities.breakSmoke();setAction("melee_charge");}
             if(melee.dashing()&&meleeContact(p))melee.strike();
@@ -137,7 +144,7 @@ public final class HazeActor {
             if(input.edge(Controls.RELOAD)) {
                 if(gun.reloadRemaining>0&&items.owned.contains("upgrade_active_reload")){var i=ItemCatalog.ITEMS.get("upgrade_active_reload");double progress=1-gun.reloadRemaining/(gun.f("m_reloadDuration")/Math.max(.1,1+gun.itemReloadPercent/100));if(progress>=.4&&progress<=.6&&itemEffects.proc(i,i.property("AbilityCooldown"))){gun.ammo=gun.clipSize(0);gun.reloadRemaining=0;itemEffects.activateBuff(i,i.property("AbilityDuration"));}}
                 else gun.reload(0);setAction("reload"); }
-            boolean fire=input.down(Controls.FIRE) && abilities.daggerAt<0 && !melee.active() && abilities.time>=parryUntil;
+            boolean fire=!itemEffects.busy()&&input.down(Controls.FIRE) && abilities.daggerAt<0 && !melee.active() && abilities.time>=parryUntil;
             boolean slide=input.down(Controls.SLIDING)&&input.down(Controls.CROUCH);
             for(Gun.Shot shot:gun.advance(dt/6,fire||flurry,input.down(Controls.AIM),flurry||debugInfiniteAmmo,slide,rate,bonus,0)) {
                 itemEffects.onShot();if(gun.shotCount%2==0)lastLeftShot=abilities.time;else lastRightShot=abilities.time;
@@ -161,14 +168,15 @@ public final class HazeActor {
         boolean changed=packet.sell()?items.sell(packet.item()):items.buy(packet.item());
         if(changed){applyItems(p);saveItems(p);}
     }
+    public void imbue(HazeProtocol.Imbue packet,ServerPlayer p){if(items.bind(packet.item(),packet.ability())){applyItems(p);saveItems(p);}}
     private java.nio.file.Path itemSave(ServerPlayer p){return p.level().getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("haze-items").resolve(owner+".json");}
     private void loadItems(ServerPlayer p){
         var path=itemSave(p);if(!java.nio.file.Files.exists(path))return;
-        try{for(var id:JsonParser.parseString(java.nio.file.Files.readString(path)).getAsJsonArray())items.buy(id.getAsString());}
+        try{var json=JsonParser.parseString(java.nio.file.Files.readString(path));var array=json.isJsonArray()?json.getAsJsonArray():json.getAsJsonObject().getAsJsonArray("items");for(var id:array)items.buy(id.getAsString());if(json.isJsonObject()&&json.getAsJsonObject().has("imbued"))for(var entry:json.getAsJsonObject().getAsJsonObject("imbued").entrySet())items.bind(entry.getKey(),entry.getValue().getAsInt());}
         catch(Exception e){HazeMod.LOG.warn("Could not load local item inventory",e);}
     }
     private void saveItems(ServerPlayer p){
-        try{var path=itemSave(p);java.nio.file.Files.createDirectories(path.getParent());JsonArray ids=new JsonArray();items.owned.forEach(ids::add);java.nio.file.Files.writeString(path,ids.toString());}
+        try{var path=itemSave(p);java.nio.file.Files.createDirectories(path.getParent());JsonArray ids=new JsonArray();items.owned.forEach(ids::add);JsonObject saved=new JsonObject();saved.add("items",ids);JsonObject imbued=new JsonObject();items.imbued.forEach(imbued::addProperty);saved.add("imbued",imbued);java.nio.file.Files.writeString(path,saved.toString());}
         catch(Exception e){HazeMod.LOG.warn("Could not save local item inventory",e);}
     }
     private void applyItems(ServerPlayer p){
@@ -176,8 +184,8 @@ public final class HazeActor {
         if(Math.abs(p.getMaxHealth()-max)>.01){p.getAttribute(Attributes.MAX_HEALTH).setBaseValue(Math.max(1,max));p.setHealth((float)Math.max(1,p.getMaxHealth()*ratio));}
         gun.itemBaseDamage=progression.bonus("MODIFIER_VALUE_BASE_BULLET_DAMAGE_FROM_LEVEL");
         gun.itemClipPercent=items.stat("BonusClipSizePercent");gun.itemClipFlat=itemStat(p,"BonusClipSize");gun.itemWeaponPercent=itemStat(p,"BaseAttackDamagePercent");
-        gun.itemReloadPercent=items.stat("ReloadSpeedMultipler");gun.itemRangePercent=items.stat("BonusAttackRangePercent");gun.ammo=Math.min(gun.ammo,gun.clipSize(0));
-        abilities.itemSpirit=(progression.bonus("MODIFIER_VALUE_TECH_POWER")+itemStat(p,"SpiritPower")+items.stat("TechPower")+items.stat("SpiritPowerInnate"))*(1+items.stat("TechPowerPercent")/100);abilities.itemCharges=(int)items.stat("BonusAbilityCharges");abilities.itemChargeReduction=items.reduction("CooldownBetweenChargeReduction");abilities.itemChargeCooldownReduction=items.reduction("CooldownReductionOnChargedAbilities");abilities.itemUltimateReduction=items.reduction("UltimateCooldownReduction");abilities.itemSpirit+=items.stat("ImbuedTechPower");abilities.itemWeaponPercent=gun.itemWeaponPercent;
+        gun.itemReloadPercent=itemStat(p,"ReloadSpeedMultipler");gun.itemRangePercent=items.stat("BonusAttackRangePercent");gun.ammo=Math.min(gun.ammo,gun.clipSize(0));
+        abilities.itemSpirit=(progression.bonus("MODIFIER_VALUE_TECH_POWER")+itemStat(p,"SpiritPower")+itemStat(p,"TechPower")+items.stat("SpiritPowerInnate"))*(1+items.stat("TechPowerPercent")/100);abilities.itemCharges=(int)items.stat("BonusAbilityCharges");abilities.itemChargeReduction=items.reduction("CooldownBetweenChargeReduction");abilities.itemChargeCooldownReduction=items.reduction("CooldownReductionOnChargedAbilities");abilities.itemUltimateReduction=items.reduction("UltimateCooldownReduction");java.util.Arrays.fill(abilities.itemImbuedSpirit,0);for(String id:items.owned)abilities.itemImbuedSpirit[items.bound(id)]+=ItemCatalog.ITEMS.get(id).stats().getOrDefault("ImbuedTechPower",0D);abilities.itemWeaponPercent=gun.itemWeaponPercent;
         abilities.itemCooldownReduction=items.reduction("CooldownReduction");abilities.itemDurationPercent=items.stat("BonusAbilityDurationPercent");abilities.itemRangePercent=items.stat("TechRangeMultiplier");
         abilities.itemRadiusPercent=items.stat("TechRadiusMultiplier");
     }
@@ -285,7 +293,7 @@ public final class HazeActor {
         V3 velocity=V3.look(yaw,elevation).mul(speed);
         double life=w.has("m_flBulletLifetime")?Retail.number(w.get("m_flBulletLifetime")):DATA.weapon().get("m_flBulletLifetime").getAsDouble();
         long id=nextProjectile++;
-        projectiles.add(new Projectile(pos,velocity,pos,life,dagger,shot==null?abilities.p(0,"Damage"):shot.damage(),id));
+        projectiles.add(new Projectile(pos,velocity,pos,life,dagger,shot==null?abilities.p(0,"Damage"):shot.damage(),id,!dagger&&itemEffects.piercing(),new HashSet<>()));
         traces.add(new Trace(id,abilities.time,pos,pos,dagger));
     }
     private V3 aimAt(ServerPlayer p,double pitch){
@@ -324,13 +332,21 @@ public final class HazeActor {
             }
             V3 visualEnd=victim!=null?of(hit):nearest==Double.POSITIVE_INFINITY?end:of(block.getLocation());
             for(int i=0;i<traces.size();i++)if(traces.get(i).id==shot.id){Trace old=traces.get(i);traces.set(i,new Trace(old.id,old.time,old.start,visualEnd,old.dagger));break;}
-            if(victim!=null) impact(p,victim,shot,hit);
+            if(shot.piercing){
+                final double wallDistance=block.getType()==HitResult.Type.MISS?Double.POSITIVE_INFINITY:from.distanceToSqr(block.getLocation());
+                var hits=new ArrayList<Map.Entry<LivingEntity,Vec3>>();
+                for(var e:level.getEntitiesOfClass(LivingEntity.class,bounds,e->TargetRules.damageable(p,e)&&!shot.hitEntities.contains(e.getId()))){var intersection=e.getBoundingBox().inflate(radius).clip(from,to);if(intersection.isPresent()&&from.distanceToSqr(intersection.get())<wallDistance)hits.add(Map.entry(e,intersection.get()));}
+                hits.sort(Comparator.comparingDouble(e->from.distanceToSqr(e.getValue())));for(var entry:hits){shot.hitEntities.add(entry.getKey().getId());impact(p,entry.getKey(),shot,entry.getValue());}
+                if(block.getType()==HitResult.Type.MISS&&shot.remaining>dt)alive.add(new Projectile(end,shot.velocity.add(accel.mul(dt)),shot.origin,shot.remaining-dt,shot.dagger,shot.damage,shot.id,true,shot.hitEntities));
+            }
+            else if(victim!=null) impact(p,victim,shot,hit);
             else if(nearest==Double.POSITIVE_INFINITY && shot.remaining>dt && end.sub(shot.origin).length()<DATA.weapon().get("m_flRange").getAsDouble()*Retail.SOURCE_UNIT)
-                alive.add(new Projectile(end,shot.velocity.add(accel.mul(dt)),shot.origin,shot.remaining-dt,shot.dagger,shot.damage,shot.id));
+                alive.add(new Projectile(end,shot.velocity.add(accel.mul(dt)),shot.origin,shot.remaining-dt,shot.dagger,shot.damage,shot.id,shot.piercing,shot.hitEntities));
         }
         projectiles.clear();projectiles.addAll(alive);
     }
     private void impact(ServerPlayer p,LivingEntity victim,Projectile projectile,Vec3 hit) {
+        itemAbilityContext=projectile.dagger?0:abilities.flurry()?3:-1;
         Fixation f=targets.computeIfAbsent(victim.getId(),id->new Fixation());
         double damage=projectile.damage;
         if(projectile.dagger) {
@@ -346,29 +362,33 @@ public final class HazeActor {
             f.damaged(DATA,abilities.ranks[0],abilities.time);
             damage=itemEffects.onBullet(victim.getId(),damage,head,p.distanceTo(victim),victim.getHealth()/victim.getMaxHealth()*100,itemHost(p));
             float oldHp=victim.getHealth();hurt(p,victim,damage,false);
-            healItem(p,Math.max(0,oldHp-victim.getHealth())*itemStat(p,"BulletLifestealPercent")/100);
-            if(stack.spiritProc()>0) hurt(p,victim,stack.spiritProc(),true);
+            double dealt=Math.max(0,oldHp-victim.getHealth());itemEffects.onWeaponDamage(victim.getId(),dealt,itemHost(p));
+            healItem(p,dealt*itemStat(p,"BulletLifestealPercent")/100);
+            if(stack.spiritProc()>0){int old=itemAbilityContext;itemAbilityContext=2;hurt(p,victim,stack.spiritProc(),true);itemAbilityContext=old;}
             if(abilities.time<abilities.buffUntil) p.heal((float)(damage*abilities.p(1,"BulletLifesteal")/100));
         }
     }
     private void hurt(ServerPlayer p,LivingEntity e,double damage,boolean spirit) {
         combat(e);
-        DamageSource source=new DamageSource(p.level().registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(BULLET),p,p);
+        DamageSource source=new DamageSource(p.level().registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(spirit?SPIRIT:BULLET),p,p);
         double multiplier=1;for(var d:itemDebuffs.getOrDefault(e.getId(),Map.of()).values())multiplier*=1-Math.min(.95,(spirit?d.item.property("MagicResistReduction")+d.item.property("TechArmorDamageReduction"):d.item.property("BulletArmorReduction")+d.item.property("BulletResistReduction"))/100);
         float hp=e.getHealth();e.invulnerableTime=0;e.hurtServer(p.level(),source,(float)(damage*multiplier));
         double dealt=Math.max(0,hp-e.getHealth());
         if(spirit&&!itemDamage){itemEffects.onSpirit(e.getId(),dealt,itemHost(p));healItem(p,dealt*(itemStat(p,"AbilityLifestealPercentHero")+items.stat("AbilityLifestealPercentHeroPassive"))/100);}
-        if(!e.isAlive()){for(String id:items.owned){var i=ItemCatalog.ITEMS.get(id);healItem(p,i.property("HealOnKill"));if(i.property("MaxStacks")>0&&(id.equals("upgrade_glass_cannon")||id.equals("upgrade_trophy_collector")))itemEffects.stacks.merge(id,1,(a,b)->Math.min((int)i.property("MaxStacks"),a+b));}}
+        if(!e.isAlive()&&TargetRules.role(p,e).hero()){for(String id:items.owned){var i=ItemCatalog.ITEMS.get(id);if(itemDebuffs.getOrDefault(e.getId(),Map.of()).containsKey(id))healItem(p,i.property("HealOnKill"));if(i.property("MaxStacks")>0&&(id.equals("upgrade_glass_cannon")||id.equals("upgrade_trophy_collector")))itemEffects.stacks.merge(id,1,(a,b)->Math.min((int)i.property("MaxStacks"),a+b));}}
     }
-    public double itemStat(ServerPlayer p,String key){return items.stat(key)+itemEffects.bonus(key,p.getHealth()/p.getMaxHealth()*100);}
-    private void healItem(ServerPlayer p,double n){if(n>0)p.heal((float)(n*(1+items.stat("HealAmpCastPercent")/100)));}
+    public double itemStat(ServerPlayer p,String key){return items.stat(key)+itemEffects.bonus(key,p.getHealth()/p.getMaxHealth()*100)+(key.equals("BonusHealth")?healthSteals.stream().mapToDouble(HealthSteal::amount).sum():0);}
+    private void healItem(ServerPlayer p,double n){if(n>0){float before=p.getHealth();p.heal((float)(n*(1+items.stat("HealAmpCastPercent")/100)));itemEffects.onHealed(Math.max(0,p.getHealth()-before));}}
     private ItemEffects.Host itemHost(ServerPlayer p){return new ItemEffects.Host(){
+        public boolean enemyHeroDamage(){return incomingEnemyHero;}
         public boolean inCombat(){return HazeActor.this.inCombat();}public boolean behind(int target){var e=p.level().getEntity(target);return e!=null&&e.getLookAngle().dot(p.position().subtract(e.position()).normalize())<0;}
         public int point(double range){int id=nextItemPoint--;itemZonePoints.put(id,p.level().clip(new ClipContext(p.getEyePosition(),p.getEyePosition().add(p.getLookAngle().scale(Math.max(range,30))),ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,p)).getLocation());return id;}
         public UnitRole role(int id){return id==0?UnitRole.SELF:p.level().getEntity(id)==null?UnitRole.OTHER:TargetRules.role(p,p.level().getEntity(id));}
-        public double spirit(){return abilities.itemSpirit;}public double weapon(){return gun.itemWeaponPercent;}
+        public int ability(){return itemAbilityContext;}
+        public double spirit(){return abilities.itemSpirit+(itemAbilityContext>=0?abilities.itemImbuedSpirit[itemAbilityContext]:0);}public double weapon(){return gun.itemWeaponPercent;}
         public int ally(double range){Vec3 eye=p.getEyePosition(),end=eye.add(p.getLookAngle().scale(range));return p.level().getEntitiesOfClass(LivingEntity.class,new AABB(eye,end).inflate(1),e->e!=p&&e.isAlive()&&TargetRules.role(p,e)==UnitRole.ALLY_HERO&&p.hasLineOfSight(e)&&e.getBoundingBox().inflate(.4).clip(eye,end).isPresent()).stream().min(Comparator.comparingDouble(p::distanceToSqr)).map(Entity::getId).orElse(0);}
         public List<Integer> allies(double range,int center){Vec3 point=center>0&&p.level().getEntity(center)!=null?p.level().getEntity(center).position():p.position();var result=new ArrayList<Integer>();if(p.distanceToSqr(point)<=range*range)result.add(0);for(var e:p.level().getEntitiesOfClass(LivingEntity.class,new AABB(point,point).inflate(range),e->e.isAlive()&&TargetRules.role(p,e)==UnitRole.ALLY_HERO&&e.distanceToSqr(point)<=range*range))result.add(e.getId());return result;}
+        public void stealHealth(int target,double amount,double duration){if(p.level().getEntity(target) instanceof LivingEntity e&&TargetRules.role(p,e)==UnitRole.ENEMY_HERO){var attr=e.getAttribute(Attributes.MAX_HEALTH);if(attr==null)return;amount=Math.min(amount,Math.max(0,e.getMaxHealth()-1));var id=Identifier.fromNamespaceAndPath("haze","siphon_"+owner+"_"+(nextHealthSteal++));attr.addTransientModifier(new AttributeModifier(id,-amount,AttributeModifier.Operation.ADD_VALUE));e.setHealth(Math.min(e.getHealth(),e.getMaxHealth()));healthSteals.add(new HealthSteal(target,id,amount,abilities.time+duration));applyItems(p);healItem(p,amount);}}
         public void healTarget(int target,double n){if(target==0)heal(n);else if(p.level().getEntity(target) instanceof LivingEntity e&&TargetRules.role(p,e).friendly())e.heal((float)(n*(1+items.stat("HealAmpCastPercent")/100)));}
         public void shieldTarget(int target,double n,double duration){if(p.level().getEntity(target) instanceof LivingEntity e&&TargetRules.role(p,e).friendly()){e.setAbsorptionAmount((float)Math.max(e.getAbsorptionAmount(),n));alliedShieldExpiry.put(target,abilities.time+duration);}}
         public void buffTarget(int target,ItemCatalog.Item i,double duration){if(target>0)alliedItemBuffs.computeIfAbsent(target,k->new HashMap<>()).put(i.id(),new ItemDebuff(i,abilities.time+duration));}
@@ -383,9 +403,13 @@ public final class HazeActor {
         }
         public double targetHealth(int id){return id==0?p.getMaxHealth():p.level().getEntity(id) instanceof LivingEntity e?e.getMaxHealth():0;}
         public void damage(int id,double n){if(n<=0)return;if(p.level().getEntity(id) instanceof LivingEntity e&&TargetRules.damageable(p,e)){boolean old=itemDamage;itemDamage=true;try{hurt(p,e,n,true);}finally{itemDamage=old;}}}
-        public void debuff(int id,ItemCatalog.Item i,double d){if(d<=0||p.level().getEntity(id)==null||!TargetRules.damageable(p,p.level().getEntity(id)))return;itemDebuffs.computeIfAbsent(id,k->new HashMap<>()).put(i.id(),new ItemDebuff(i,abilities.time+d));}
+        public void debuff(int id,ItemCatalog.Item i,double d){if(d<=0||p.level().getEntity(id)==null||!TargetRules.damageable(p,p.level().getEntity(id)))return;var map=itemDebuffs.computeIfAbsent(id,k->new HashMap<>());var old=map.get(i.id());map.put(i.id(),new ItemDebuff(i,abilities.time+d,old==null?abilities.time:old.started));}
         public void reload(double pct){gun.ammo=Math.min(gun.clipSize(0),gun.ammo+(int)Math.ceil(gun.clipSize(0)*pct/100));if(pct>0)gun.reloadRemaining=0;}
         public void refresh(boolean ultimate){if(ultimate)abilities.clearCooldowns();else for(int i=0;i<3;i++)abilities.readyAt[i]=abilities.time;}
+        public void echo(int ability){abilities.refresh(ability);}
+        public void replenishCharge(){abilities.refresh(1);}
+        public void reduceCooldown(double seconds,double percent){for(int i=0;i<4;i++)abilities.readyAt[i]=abilities.time+Math.max(0,(abilities.readyAt[i]-abilities.time)*(1-percent/100)-seconds);}
+
         public void teleport(double range,int target){Vec3 end;
             if(target>0&&p.level().getEntity(target)!=null){var e=p.level().getEntity(target);end=e.position().subtract(e.getLookAngle().scale(1.5));}
             else {Vec3 start=p.getEyePosition(),goal=start.add(p.getLookAngle().scale(range));var hit=p.level().clip(new ClipContext(start,goal,ClipContext.Block.COLLIDER,ClipContext.Fluid.NONE,p));end=hit.getLocation().subtract(p.getLookAngle().scale(.6)).add(0,-p.getEyeHeight(),0);}
@@ -393,18 +417,23 @@ public final class HazeActor {
         }
         public void impulse(double n){}public void cleanse(){for(var effect:new ArrayList<>(p.getActiveEffects()))if(effect.getEffect().value().getCategory()==net.minecraft.world.effect.MobEffectCategory.HARMFUL)p.removeEffect(effect.getEffect());p.clearFire();}
     };}
-    public double outgoingItemMultiplier(int entity){double result=1;for(var d:itemDebuffs.getOrDefault(entity,Map.of()).values())if(d.until>abilities.time){if(Set.of("upgrade_target_stun","upgrade_glitch","upgrade_greater_withering_whip","upgrade_crushing_fists").contains(d.item.id()))return 0;result*=1+d.item.property("OutgoingDamagePenaltyPercent")/100;}return Math.max(0,result);}
+    public boolean itemSilenced(int entity){for(var d:itemDebuffs.getOrDefault(entity,Map.of()).values())if(d.until>abilities.time&&Set.of("upgrade_targeted_silence","upgrade_proc_silence","upgrade_focus_lens","upgrade_glitch").contains(d.item.id()))return true;return false;}
+    public double outgoingItemMultiplier(int entity,boolean spell){double result=1;for(var d:itemDebuffs.getOrDefault(entity,Map.of()).values())if(d.until>abilities.time){String id=d.item.id();if(Set.of("upgrade_target_stun","upgrade_glitch","upgrade_crushing_fists").contains(id))return 0;if(spell&&itemSilenced(entity))return 0;if(!spell&&Set.of("upgrade_greater_withering_whip","upgrade_phantom_strike").contains(id))return 0;result*=1+d.item.property("OutgoingDamagePenaltyPercent")/100;}return Math.max(0,result);}
+    public void captureItemDamage(int entity,double amount){var d=itemDebuffs.getOrDefault(entity,Map.of()).get("upgrade_focus_lens");if(d!=null&&d.until>abilities.time)focusedDamage.merge(entity,amount,Double::sum);}
     public double healMultiplier(int entity){double result=1;for(var d:itemDebuffs.getOrDefault(entity,Map.of()).values())if(d.until>abilities.time)result=Math.min(result,1+d.item.property("HealAmpReceivePenaltyPercent")/100);return Math.max(0,result);}
     public float incomingItemDamage(ServerPlayer p,DamageSource source,float amount){
-        boolean bullet=source.is(net.minecraft.tags.DamageTypeTags.IS_PROJECTILE)||source.is(BULLET);boolean spirit=!bullet&&!(source.getDirectEntity() instanceof LivingEntity);
+        boolean bullet=source.is(net.minecraft.tags.DamageTypeTags.IS_PROJECTILE)||source.is(BULLET);boolean spirit=source.is(SPIRIT)||!bullet&&!(source.getDirectEntity() instanceof LivingEntity);
         double resist=items.reduction(bullet?"BulletResist":spirit?"TechResist":"MeleeResistPercent")+itemEffects.bonus(bullet?"BulletResist":"TechResist",p.getHealth()/p.getMaxHealth()*100)/100;
         if(source.getEntity()!=null&&TargetRules.role(p,source.getEntity())==UnitRole.CREEP&&bullet)resist=1-(1-resist)*(1-items.reduction("NonPlayerBulletResist"));
-        if(p.getActiveEffects().stream().anyMatch(e->e.getEffect().value().getCategory()==net.minecraft.world.effect.MobEffectCategory.HARMFUL))itemEffects.onControl(itemHost(p));
+        if(p.getActiveEffects().stream().anyMatch(e->e.getEffect().equals(net.minecraft.world.effect.MobEffects.LEVITATION)||e.getEffect().equals(net.minecraft.world.effect.MobEffects.SLOWNESS)&&e.getAmplifier()>=9))itemEffects.onControl(itemHost(p));
+        incomingEnemyHero=source.getEntity()!=null&&TargetRules.role(p,source.getEntity())==UnitRole.ENEMY_HERO;
         double n=itemEffects.incoming(amount*(1-Math.clamp(resist,-1,.95)),bullet,spirit,itemHost(p));
         if(itemEffects.buff("upgrade_return_fire")&&source.getEntity() instanceof LivingEntity e&&e!=p&&!itemDamage){var i=ItemCatalog.ITEMS.get("upgrade_return_fire");itemHost(p).damage(e.getId(),amount*i.property(bullet?"BulletDamageReflectedPct":"SpiritDamageReflectedPct")/100);}
         return (float)n;
     }
     private void tickItemDebuffs(ServerPlayer p){
+        for(var steal:new ArrayList<>(healthSteals))if(steal.until<=abilities.time||!items.owned.contains("upgrade_siphon_bullets")){if(p.level().getEntity(steal.entity) instanceof LivingEntity e){var attr=e.getAttribute(Attributes.MAX_HEALTH);if(attr!=null)attr.removeModifier(steal.modifier);e.heal((float)steal.amount);}healthSteals.remove(steal);}
+
         for(var entry:new ArrayList<>(alliedShieldExpiry.entrySet()))if(entry.getValue()<=abilities.time){if(p.level().getEntity(entry.getKey()) instanceof LivingEntity e)e.setAbsorptionAmount(0);alliedShieldExpiry.remove(entry.getKey());}
         for(var entry:new ArrayList<>(alliedItemBuffs.entrySet())){
             if(!(p.level().getEntity(entry.getKey()) instanceof LivingEntity e)){alliedItemBuffs.remove(entry.getKey());continue;}
@@ -415,13 +444,16 @@ public final class HazeActor {
 
         for(var entry:new ArrayList<>(itemDebuffs.entrySet())){
             if(!(p.level().getEntity(entry.getKey()) instanceof Mob e)){itemDebuffs.remove(entry.getKey());continue;}
+            var focus=entry.getValue().get("upgrade_focus_lens");if(focus!=null&&focus.until<=abilities.time){entry.getValue().remove("upgrade_focus_lens");double captured=focusedDamage.getOrDefault(e.getId(),0D);focusedDamage.remove(e.getId());itemHost(p).damage(e.getId(),captured*focus.item.property("PercentDamage")/100);}
             entry.getValue().values().removeIf(d->d.until<=abilities.time);double slow=0;boolean stop=false;
-            for(var d:entry.getValue().values()){slow=Math.max(slow,Math.max(d.item.property("SlowPercent"),Math.max(d.item.property("MovementSpeedSlow"),d.item.property("MaxSlowPercent"))));String id=d.item.id();if(Set.of("upgrade_target_stun","upgrade_aoe_root","upgrade_glitch","upgrade_arctic_blast").contains(id))stop=true;}
+            for(var d:entry.getValue().values()){slow=Math.max(slow,Math.max(d.item.property("SlowPercent"),Math.max(d.item.property("MovementSpeedSlow"),d.item.property("MaxSlowPercent"))));String id=d.item.id();if(Set.of("upgrade_target_stun","upgrade_glitch","upgrade_crushing_fists").contains(id)||id.equals("upgrade_arctic_blast")&&abilities.time-d.started<d.item.property("FreezeDuration"))stop=true;}
             var speed=e.getAttribute(Attributes.MOVEMENT_SPEED);var id=Identifier.fromNamespaceAndPath("haze","item_slow_"+owner);if(speed!=null){speed.removeModifier(id);if(slow>0)speed.addTransientModifier(new AttributeModifier(id,-Math.min(.99,slow/100),AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));}
             if(stop){e.getNavigation().stop();e.setTarget(null);e.setDeltaMovement(0,e.getDeltaMovement().y,0);}
             if(entry.getValue().isEmpty())itemDebuffs.remove(entry.getKey());
         }
     }
+    public void damagedEntity(LivingEntity entity,DamageSource source){itemEffects.targetDamaged(entity.getUUID().equals(owner)?0:entity.getId(),source.getEntity()!=null&&TargetRules.role(entity,source.getEntity())==UnitRole.ENEMY_HERO);}
+    public void enemyAbility(Entity caster){if(active&&caster.level().dimension()==dimension){var player=caster.level().getServer().getPlayerList().getPlayer(owner);if(player!=null&&TargetRules.role(player,caster)==UnitRole.ENEMY_HERO)itemEffects.onEnemyAbility(player.distanceTo(caster));}}
     public void combat(Entity other){
         String field=other instanceof Player?"m_flInCombatWithHeroDuration":other instanceof net.minecraft.world.entity.monster.Monster?"m_flInCombatWithNonHeroDuration":"m_flInCombatWithNeutralDuration";
         combatUntil=Math.max(combatUntil,abilities.time+Retail.number(DATA.root.getAsJsonObject("genericData").get(field)));
@@ -439,7 +471,7 @@ public final class HazeActor {
             V3 origin=of(p.position()).add(new V3(0,1.5,0));
             V3 target=of(e.position()).add(new V3(0,e.getBbHeight()/2,0));
             V3 velocity=target.sub(origin).normalized().mul(gun.f("m_flBulletSpeed")*Retail.SOURCE_UNIT);
-            long id=nextProjectile++;projectiles.add(new Projectile(origin,velocity,origin,gun.f("m_flBulletLifetime"),false,shot.damage(),id));
+            long id=nextProjectile++;projectiles.add(new Projectile(origin,velocity,origin,gun.f("m_flBulletLifetime"),false,shot.damage(),id,itemEffects.piercing(),new HashSet<>()));
             traces.add(new Trace(id,abilities.time,origin,origin,false));
         }
     }
@@ -489,6 +521,12 @@ public final class HazeActor {
     }
     private Identifier slowId(){return Identifier.fromNamespaceAndPath("haze","slow_"+owner);}
     public void clearStatuses(ServerLevel level) {
+        for(int entityId:itemDebuffs.keySet())if(level.getEntity(entityId) instanceof LivingEntity e){var speed=e.getAttribute(Attributes.MOVEMENT_SPEED);if(speed!=null)speed.removeModifier(Identifier.fromNamespaceAndPath("haze","item_slow_"+owner));}
+        for(int entityId:alliedItemBuffs.keySet())if(level.getEntity(entityId) instanceof LivingEntity e){var speed=e.getAttribute(Attributes.MOVEMENT_SPEED);if(speed!=null)speed.removeModifier(Identifier.fromNamespaceAndPath("haze","item_ally_speed_"+owner));}
+        for(int entityId:alliedShieldExpiry.keySet())if(level.getEntity(entityId) instanceof LivingEntity e)e.setAbsorptionAmount(0);
+        for(var steal:healthSteals)if(level.getEntity(steal.entity) instanceof LivingEntity e){var attr=e.getAttribute(Attributes.MAX_HEALTH);if(attr!=null)attr.removeModifier(steal.modifier);e.heal((float)steal.amount);}
+        itemDebuffs.clear();alliedItemBuffs.clear();alliedShieldExpiry.clear();healthSteals.clear();focusedDamage.clear();itemZonePoints.clear();itemEffects.stop();
+
         for(int id:targets.keySet())if(level.getEntity(id) instanceof LivingEntity e){var speed=e.getAttribute(Attributes.MOVEMENT_SPEED);if(speed!=null)speed.removeModifier(slowId());}
     }
     public boolean parrying() { return active && abilities.time<parryUntil; }
@@ -515,7 +553,7 @@ public final class HazeActor {
         j.addProperty("level",progression.level);j.add("characterStats",characterStats(p));
         j.addProperty("health",p.getHealth());j.addProperty("maxHealth",p.getMaxHealth());j.addProperty("ammo",gun.ammo);
         j.addProperty("reload",gun.reloadRemaining);j.addProperty("time",abilities.time);j.addProperty("recoil",gun.recoil);j.addProperty("bloom",gun.bloom);
-        JsonArray inventory=new JsonArray();items.owned.forEach(inventory::add);j.add("items",inventory);j.addProperty("itemSlots",items.capacity);j.addProperty("shopMessage",items.message);j.addProperty("clipSize",gun.clipSize(0));
+        JsonArray inventory=new JsonArray();items.owned.forEach(inventory::add);j.add("items",inventory);JsonObject bindings=new JsonObject();items.imbued.forEach(bindings::addProperty);j.add("imbued",bindings);j.addProperty("itemSlots",items.capacity);j.addProperty("shopMessage",items.message);j.addProperty("clipSize",gun.clipSize(0));
         j.addProperty("debugNoCooldowns",debugNoCooldowns&&p.isCreative());
         j.addProperty("debugInfiniteAmmo",debugInfiniteAmmo&&p.isCreative());j.addProperty("debugLockHealth",debugLockHealth&&p.isCreative());
         if(p.isCreative()&&active){
@@ -527,7 +565,7 @@ public final class HazeActor {
                 j.add("debugTarget",info);
             }
         }
-        j.addProperty("itemMoveSpeed",itemStat(p,"BonusMoveSpeed"));j.addProperty("itemFlight",Math.max(0,itemEffects.flightUntil-itemEffects.time));j.addProperty("itemFlightSpeed",itemEffects.flightSpeed);j.addProperty("itemImpulse",itemEffects.moveImpulse);j.addProperty("itemMovementSerial",itemEffects.movementSerial);j.addProperty("itemStaminaSerial",itemEffects.staminaSerial);j.addProperty("itemBarrier",itemEffects.barrier);
+        j.addProperty("itemMoveSpeed",itemStat(p,"BonusMoveSpeed"));j.addProperty("itemFlight",Math.max(0,itemEffects.flightUntil-itemEffects.time));j.addProperty("itemFlightSpeed",itemEffects.flightSpeed);j.addProperty("itemImpulse",itemEffects.moveImpulse);j.addProperty("itemMovementSerial",itemEffects.movementSerial);j.addProperty("itemStaminaSerial",itemEffects.staminaSerial);j.addProperty("itemStaminaRestore",itemEffects.staminaRestore);j.addProperty("itemBarrier",itemEffects.barrier);
         JsonArray itemCD=new JsonArray();for(String id:items.active())itemCD.add(itemEffects.cooldown(id));j.add("itemCooldowns",itemCD);
         j.addProperty("smoke",abilities.smokeActive());j.addProperty("invisible",abilities.invisible());j.addProperty("flurry",abilities.flurry());
         j.addProperty("action",action);j.addProperty("actionTime",actionTime);j.addProperty("shots",gun.shotCount);

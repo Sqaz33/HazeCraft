@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class LivingMotionMixin {
     @ModifyVariable(method="hurtServer",at=@At("HEAD"),argsOnly=true,ordinal=0)
     private float haze$itemResistance(float amount,net.minecraft.server.level.ServerLevel level,net.minecraft.world.damagesource.DamageSource source,float original){
-        if(source.getEntity()!=null)for(var effectOwner:dev.local.haze.HazeMod.ACTORS.values())if(effectOwner.active)amount*=effectOwner.outgoingItemMultiplier(source.getEntity().getId());
+        if(source.getEntity()!=null)for(var effectOwner:dev.local.haze.HazeMod.ACTORS.values())if(effectOwner.active)amount*=effectOwner.outgoingItemMultiplier(source.getEntity().getId(),source.is(net.minecraft.tags.DamageTypeTags.IS_FIRE)||source.getDirectEntity()!=source.getEntity()&&!(source.getDirectEntity() instanceof net.minecraft.world.entity.projectile.arrow.AbstractArrow));
         var actor=dev.local.haze.HazeMod.ACTORS.get(((LivingEntity)(Object)this).getUUID());
         if(actor==null||!actor.active)return amount;
         if((Object)this instanceof net.minecraft.server.level.ServerPlayer p)return actor.incomingItemDamage(p,source,amount);

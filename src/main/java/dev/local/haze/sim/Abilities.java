@@ -1,7 +1,7 @@
 package dev.local.haze.sim;
 
 public final class Abilities {
-    private final Retail data;
+    private final Retail data;public final double[] itemImbuedSpirit=new double[4];
     public final int[] ranks=new int[4];
     public final double[] readyAt=new double[4];
     public double time, smokeStart=-100, smokeUntil, buffUntil, flurryStart, flurryUntil, daggerAt=-1;
@@ -11,7 +11,7 @@ public final class Abilities {
     private double smokeNextRecharge;
     public Abilities(Retail data) { this.data=data; }
     public double p(int index,String name) {
-        double value=data.prop(Retail.SIGNATURES[index],name,ranks[index],itemSpirit,itemWeaponPercent);
+        double value=data.prop(Retail.SIGNATURES[index],name,ranks[index],itemSpirit+itemImbuedSpirit[index],itemWeaponPercent);
         if(name.equals("AbilityCooldown"))value*=(1-itemCooldownReduction)*(1-(index==1?itemChargeCooldownReduction:index==3?itemUltimateReduction:0));
         if(name.equals("AbilityCooldownBetweenCharge"))value*=1-itemChargeReduction;
         if(name.equals("AbilityDuration")||name.equals("SleepDuration"))value*=1+itemDurationPercent/100;
@@ -62,6 +62,7 @@ public final class Abilities {
         smokeCharges=(ranks[1]>=2?(int)p(1,"AbilityCharges"):1)+itemCharges;
         smokeNextRecharge=0;
     }
+    public void refresh(int index){if(index<0||index>3||index==2)return;readyAt[index]=time;if(index==1){smokeCharges=Math.min((ranks[1]>=2?(int)p(1,"AbilityCharges"):1)+itemCharges,smokeCharges+1);smokeNextRecharge=time+p(1,"AbilityCooldown");}}
     public boolean invisible() { return smokeActive() && time-smokeStart>=p(1,"InvisFadeToDuration"); }
     public double cooldown(int index){return Math.max(0,Math.max(readyAt[index],index==1&&smokeCharges<=0?smokeNextRecharge:0)-time);}
     public boolean flurry() { return time>=flurryStart && time<flurryUntil; }
