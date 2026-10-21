@@ -7,6 +7,12 @@ public final class ItemInventory {
     public final List<String> owned=new ArrayList<>();
     public final Map<String,Double> readyAt=new HashMap<>();
     public final Map<String,Integer> imbued=new HashMap<>();
+    public final Map<String,Integer> permanentPickups=new TreeMap<>();
+    private final Map<String,Double> permanentStats=new HashMap<>();
+    public double matchSeconds,gooseProgress;
+    public int gooseSouls;
+    public long persistentRevision;
+    public void grantPickup(String id){PermanentPickups.stats(id).forEach((key,n)->permanentStats.merge(key,n,Double::sum));permanentPickups.merge(id,1,Integer::sum);persistentRevision++;}
     public boolean bind(String id,int ability){
         var item=ItemCatalog.ITEMS.get(id);if(!owned.contains(id)||item==null||!needsImbue(item)||ability<0||ability>3||ability==2)return false;
         if(ability==3&&item.data().get("m_TargetAbilityEffectsToApply").getAsString().contains("NON_ULT"))return false;
@@ -26,11 +32,11 @@ public final class ItemInventory {
         var consumed=components(id);
         if(owned.size()-owned.stream().filter(consumed::contains).count()>=capacity){message="Нет свободного слота";return false;}
         if(item.active()&&active().size()-owned.stream().filter(consumed::contains).map(ItemCatalog.ITEMS::get).filter(ItemCatalog.Item::active).count()>=4){message="Доступны четыре активных слота";return false;}
-        owned.removeIf(consumed::contains);owned.add(id);rebuild();message="Куплено: "+item.name();return true;
+        owned.removeIf(consumed::contains);owned.add(id);if(id.equals("upgrade_goose_egg")){gooseSouls=(int)item.property("StartingGold");gooseProgress=0;}rebuild();message="Куплено: "+item.name();return true;
     }
     public boolean sell(String id){if(!owned.remove(id))return false;readyAt.remove(id);rebuild();message="Продано: "+ItemCatalog.ITEMS.get(id).name();return true;}
     public List<String> active(){return owned.stream().filter(id->ItemCatalog.ITEMS.get(id).active()).toList();}
     private void rebuild(){Map<String,Double> next=new HashMap<>();for(String id:owned)ItemCatalog.ITEMS.get(id).stats().forEach((k,v)->next.merge(k,v,Double::sum));stats=Map.copyOf(next);}
-    public double stat(String key){return stats.getOrDefault(key,0D);}
-    public double reduction(String key){double factor=1;for(String id:owned)factor*=1-Math.clamp(ItemCatalog.ITEMS.get(id).stats().getOrDefault(key,0D)/100,-.95,.95);return 1-factor;}
+    public double stat(String key){return stats.getOrDefault(key,0D)+permanentStats.getOrDefault(key,0D);}
+    public double reduction(String key){double factor=1-Math.clamp(permanentStats.getOrDefault(key,0D)/100,-.95,.95);for(String id:owned)factor*=1-Math.clamp(ItemCatalog.ITEMS.get(id).stats().getOrDefault(key,0D)/100,-.95,.95);return 1-factor;}
 }

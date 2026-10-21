@@ -39,6 +39,8 @@ public final class ItemEffects {
     private final List<RunnableAt> delayed=new ArrayList<>();
     private final List<Zone> zones=new ArrayList<>();
     private double lastShot=-100,shootStart,etherealUntil,leapUntil;
+    private double hatchAt=Double.POSITIVE_INFINITY;
+    private final PermanentPickups permanentPickups=new PermanentPickups();
     private static final class Shield {double amount,until;Shield(double amount,double until){this.amount=amount;this.until=until;}}
     private final Map<String,Shield> shields=new LinkedHashMap<>();
     private final Map<String,Double> expirations=new HashMap<>();
@@ -54,12 +56,13 @@ public final class ItemEffects {
     public void shield(double amount,double duration){shield("manual",amount,duration);}
     public void shield(String id,double amount,double duration){if(amount<=0||duration<=0)return;shields.put(id,new Shield(amount,time+duration));updateShields();}
     private void updateShields(){shields.entrySet().removeIf(e->e.getValue().until<=time||!e.getKey().equals("manual")&&!inventory.owned.contains(e.getKey()));barrier=shields.values().stream().mapToDouble(s->s.amount).sum();barrierUntil=shields.values().stream().mapToDouble(s->s.until).max().orElse(time);}
-    public void stop(){buffs.clear();delayed.clear();zones.clear();shields.clear();barrier=0;invisibleUntil=flightUntil=leapUntil=etherealUntil=0;}
-    public boolean busy(){return buff("upgrade_self_bubble")&&time<etherealUntil;}
+    public void stop(){buffs.clear();delayed.clear();zones.clear();shields.clear();barrier=0;invisibleUntil=flightUntil=leapUntil=etherealUntil=0;hatchAt=Double.POSITIVE_INFINITY;}
+    public boolean busy(){return buff("upgrade_self_bubble")&&time<etherealUntil||Double.isFinite(hatchAt);}
 
     public boolean use(int slot,Host h){
         context(h);var active=inventory.active();if(slot<0||slot>=active.size())return false;
         var i=ItemCatalog.ITEMS.get(active.get(slot));String id=i.id();
+        if(id.equals("upgrade_goose_egg")&&Double.isFinite(hatchAt))return false;
         if(id.equals("upgrade_blood_tribute")&&buff(id)){buffs.remove(id);return true;}
         if(id.equals("upgrade_rocket_booster")&&leapUntil>time&&!h.grounded()){moveImpulse=-value(i,"DropDownSpeed");movementSerial++;leapUntil=0;return true;}
         if(id.equals("upgrade_rocket_booster")&&time-lastDamage<value(i,"InterruptCooldown"))return false;
@@ -106,12 +109,24 @@ public final class ItemEffects {
             case "upgrade_self_bubble" -> {etherealUntil=time+d;h.cleanse();delayed.add(new RunnableAt(time+d,()->{activateBuff(i,value(i,"BuffDuration"));h.reload(100);}));}
             case "upgrade_surging_power" -> h.reload(value(i,"ActiveReloadPercent"));
             case "upgrade_magic_carpet" -> {flightFrom=time+value(i,"SummonDuration");flightUntil=flightFrom+d;flightSpeed=value(i,"FlyMoveSpeed");}
-            case "upgrade_goose_egg" -> inventory.message="Души уже бесконечны";
+            case "upgrade_goose_egg" -> hatchAt=time+value(i,"AbilityChannelTime");
             default -> { /* Self buffs are applied by bonus(), immunity(), and onBullet(). */ }
         }
     }
     public void tick(double dt,Host h){
         context(h);double previous=time;time+=dt;updateShields();if(invisibleUntil>0&&invisibleUntil<=time)breakInvisibility();
+        inventory.matchSeconds+=dt;
+        var egg=ItemCatalog.ITEMS.get("upgrade_goose_egg");
+        if(inventory.owned.contains(egg.id())){
+            if(inventory.gooseSouls==0)inventory.gooseSouls=(int)value(egg,"StartingGold");
+            if(h.health()>0){inventory.gooseProgress+=dt;double period=60/value(egg,"BonusGoldPerMinute");while(inventory.gooseProgress+1e-9>=period){inventory.gooseSouls++;inventory.gooseProgress-=period;}}else hatchAt=Double.POSITIVE_INFINITY;
+            if(time+1e-9>=hatchAt&&h.health()>0){
+                int rewards=(int)((inventory.gooseSouls-value(egg,"StartingGold"))/Math.max(1,value(egg,"BonusBuffsPerGold")));
+                for(int n=0;n<rewards;n++)inventory.grantPickup(permanentPickups.draw(inventory.matchSeconds,random));
+                int souls=inventory.gooseSouls;inventory.sell(egg.id());inventory.gooseSouls=0;inventory.gooseProgress=0;inventory.persistentRevision++;
+                inventory.message="Яйцо вылупилось: "+souls+" душ, постоянных усилений: "+rewards;hatchAt=Double.POSITIVE_INFINITY;
+            }
+        }else{inventory.gooseSouls=0;inventory.gooseProgress=0;hatchAt=Double.POSITIVE_INFINITY;}
         if(leapUntil>time){if(!h.grounded())leapAirborne=true;else if(leapAirborne){var leap=ItemCatalog.ITEMS.get("upgrade_rocket_booster");for(int target:h.nearby(value(leap,"SlamDownRadius"),0))h.debuff(target,leap,value(leap,"SlowDuration"));leapUntil=0;}}
 
         var tasks=new ArrayList<>(delayed);delayed.clear();for(var task:tasks)if(task.at<=time)task.run.run();else delayed.add(task);

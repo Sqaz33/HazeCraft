@@ -46,7 +46,7 @@ public final class HazeActor {
     private double meleeDamageDealt;
     private int itemAbilityContext=-1;
     private boolean itemDamage,incomingEnemyHero;private int nextItemPoint=-3;
-    private boolean itemsLoaded;
+    private boolean itemsLoaded;private long savedItemRevision;private double nextItemSave;
     public final Map<Integer,Fixation> targets=new HashMap<>();
     public final List<Projectile> projectiles=new ArrayList<>();
     public final List<Trace> traces=new ArrayList<>();
@@ -111,6 +111,7 @@ public final class HazeActor {
         p.fallDistance=0;p.getFoodData().setFoodLevel(20);
         double dt=0.05;
         itemEffects.tick(dt,itemHost(p));applyItems(p);tickItemDebuffs(p);
+        if(items.persistentRevision!=savedItemRevision||abilities.time>=nextItemSave){saveItems(p);savedItemRevision=items.persistentRevision;nextItemSave=abilities.time+30;}
         if(debugNoCooldowns)items.readyAt.clear();
         traces.removeIf(trace->abilities.time-trace.time>0.5);
         double before=abilities.time;
@@ -174,11 +175,18 @@ public final class HazeActor {
     private java.nio.file.Path itemSave(ServerPlayer p){return p.level().getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("haze-items").resolve(owner+".json");}
     private void loadItems(ServerPlayer p){
         var path=itemSave(p);if(!java.nio.file.Files.exists(path))return;
-        try{var json=JsonParser.parseString(java.nio.file.Files.readString(path));var array=json.isJsonArray()?json.getAsJsonArray():json.getAsJsonObject().getAsJsonArray("items");for(var id:array)items.buy(id.getAsString());if(json.isJsonObject()&&json.getAsJsonObject().has("imbued"))for(var entry:json.getAsJsonObject().getAsJsonObject("imbued").entrySet())items.bind(entry.getKey(),entry.getValue().getAsInt());}
+        try{var json=JsonParser.parseString(java.nio.file.Files.readString(path));var array=json.isJsonArray()?json.getAsJsonArray():json.getAsJsonObject().getAsJsonArray("items");for(var id:array)items.buy(id.getAsString());if(json.isJsonObject()){
+            var object=json.getAsJsonObject();
+            if(object.has("imbued"))for(var entry:object.getAsJsonObject("imbued").entrySet())items.bind(entry.getKey(),entry.getValue().getAsInt());
+            if(object.has("permanentPickups"))for(var entry:object.getAsJsonObject("permanentPickups").entrySet())for(int n=0;n<Math.max(0,entry.getValue().getAsInt());n++)items.grantPickup(entry.getKey());
+            if(object.has("matchSeconds"))items.matchSeconds=Math.max(0,object.get("matchSeconds").getAsDouble());
+            if(object.has("gooseSouls"))items.gooseSouls=Math.max(0,object.get("gooseSouls").getAsInt());
+            if(object.has("gooseProgress"))items.gooseProgress=Math.max(0,object.get("gooseProgress").getAsDouble());
+        }}
         catch(Exception e){HazeMod.LOG.warn("Could not load local item inventory",e);}
     }
     private void saveItems(ServerPlayer p){
-        try{var path=itemSave(p);java.nio.file.Files.createDirectories(path.getParent());JsonArray ids=new JsonArray();items.owned.forEach(ids::add);JsonObject saved=new JsonObject();saved.add("items",ids);JsonObject imbued=new JsonObject();items.imbued.forEach(imbued::addProperty);saved.add("imbued",imbued);java.nio.file.Files.writeString(path,saved.toString());}
+        try{var path=itemSave(p);java.nio.file.Files.createDirectories(path.getParent());JsonArray ids=new JsonArray();items.owned.forEach(ids::add);JsonObject saved=new JsonObject();saved.add("items",ids);JsonObject imbued=new JsonObject();items.imbued.forEach(imbued::addProperty);saved.add("imbued",imbued);JsonObject permanent=new JsonObject();items.permanentPickups.forEach(permanent::addProperty);saved.add("permanentPickups",permanent);saved.addProperty("matchSeconds",items.matchSeconds);saved.addProperty("gooseSouls",items.gooseSouls);saved.addProperty("gooseProgress",items.gooseProgress);java.nio.file.Files.writeString(path,saved.toString());}
         catch(Exception e){HazeMod.LOG.warn("Could not save local item inventory",e);}
     }
     private void applyItems(ServerPlayer p){
@@ -557,6 +565,7 @@ public final class HazeActor {
         stats.addProperty("Выстрелов в секунду",(1+itemStat(p,"BonusFireRate")/100)/gun.f("m_flCycleTime"));stats.addProperty("Патроны",gun.ammo);stats.addProperty("Размер магазина",gun.clipSize(abilities.itemSpirit));
         stats.addProperty("Перезарядка, с",gun.reloadDuration());stats.addProperty("Сила духа",abilities.itemSpirit);
         stats.addProperty("Скорость, м/с",DATA.stat("EMaxMoveSpeed")+itemStat(p,"BonusMoveSpeed"));stats.addProperty("Бонус спринта, м/с",DATA.stat("ESprintSpeed")+itemStat(p,"BonusSprintSpeed"));stats.addProperty("Стамина",DATA.stat("EStamina")+items.stat("Stamina"));
+        stats.addProperty("Постоянные усиления",items.permanentPickups.values().stream().mapToInt(Integer::intValue).sum());stats.addProperty("Души в яйце",items.gooseSouls);
         stats.addProperty("Сопротивление пулям, %",100*items.reduction("BulletResist")+itemEffects.bonus("BulletResist",100*p.getHealth()/p.getMaxHealth()));stats.addProperty("Сопротивление духу, %",100*items.reduction("TechResist")+itemEffects.bonus("TechResist",100*p.getHealth()/p.getMaxHealth()));
         stats.addProperty("Сокращение КД, %",100*abilities.itemCooldownReduction);stats.addProperty("Длительность умений, %",abilities.itemDurationPercent);stats.addProperty("Радиус умений, %",abilities.itemRadiusPercent);
         stats.addProperty("Лёгкий удар",(DATA.stat("ELightMeleeDamage")+progression.bonus("MODIFIER_VALUE_BASE_MELEE_DAMAGE_FROM_LEVEL"))*(1+itemStat(p,"BonusMeleeDamagePercent")/100));stats.addProperty("Тяжёлый удар",(DATA.stat("EHeavyMeleeDamage")+progression.bonus("MODIFIER_VALUE_BASE_MELEE_DAMAGE_FROM_LEVEL"))*(1+itemStat(p,"BonusMeleeDamagePercent")/100));

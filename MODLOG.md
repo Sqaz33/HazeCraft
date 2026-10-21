@@ -610,3 +610,17 @@ missing after old lab deletion, 0 failures. Targeted item/rules suites executed;
 no game-control/visual verification. Package validator passed, nested Fabric API
 and owned resources retained. Source manifest is private in current lab.
 Goal remains incomplete: see SHOP_STATUS.md for unported/unconfirmed rules.
+
+### Stage 4 — Golden Goose Egg and permanent pickups
+Read-only Universal Modder route extended to owned misc.vdata and server.dll.
+Native hatch removal callback 0x1803d5e30 subtracts StartingGold before integer
+division by BonusBuffsPerGold, then calls permanent-pickup manager 0x180882000.
+Manager uses generic_data m_BreakablePowerupLootParams; deck fill 0x180870490
+rounds weight*deckSize to nearest-even, minimum one for positive weight.
+Implemented two-second hatch channel, 80 souls/minute alive, consumption,
+time-tiered weighted pickup deck (0/10/30 minutes), all ten pickup stat types,
+persisted rewards and egg accumulation. MC simulation's active Haze time is
+the match clock; native RNG order and timing under interrupts are not proven.
+Private derived pickups.json remains ignored; repeatable prepare_pickups.py
+committed without game data. 24 targeted tests passed, including six new
+pickup/egg scenarios and source rules for more than five other items.
